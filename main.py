@@ -223,12 +223,13 @@ def timelapseVideo(file: pathlib.Path) -> None:
 # Function to combine the timelapse videos
 def combineTimelapse(file: pathlib.Path) -> None:
     output = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp4")
-    terms = f'ffmpeg -f concat -safe 0 -i {file} -c copy "{output}"'
+    terms = f'ffmpeg -f concat -safe 0 -i "{file}" -c copy "{output}"'
     timelapse = subprocess.Popen(
         terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
     # Run the command and wait for it to finish
     timelapse.wait()
+    print("yippers")
 
 
 # Command line arguments
@@ -345,7 +346,7 @@ if len(video_files) == 0:
 # Turn every video into a timelapse
 for video in video_files:
     timelapseVideo(video)
-    # Maybe add the ability to crop and transition video clips if wanted
+# Maybe add the ability to crop and transition video clips if wanted
 
 # Create a concat list of all the videos
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
