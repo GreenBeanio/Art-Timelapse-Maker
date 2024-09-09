@@ -216,76 +216,83 @@ def getFramerate(file: pathlib.Path) -> float:
 # Function to create a timelapse from a video
 def timelapseVideo(file: pathlib.Path) -> None:
     # print(getLength(file))
-    output = pathlib.Path.joinpath(timelapse_args.temp_directory, file.name)
-    # Tried to use this method, but I couldn't figure out how to calculate the frames to skip from the multiplier.
-    # terms = f'ffmpeg -i "{file}" -vf framestep={every_x_frames},setpts=N/{getFramerate(file)}/TB -c:v libx265 -r {timelapse_args.output_fps} -an "{output}"'
-    ### terms = f'ffmpeg -i "{file}" -vf setpts={1/timelapse_args.speed_factor}*PTS -c:v libx265 -r {timelapse_args.output_fps} -an "{output}"'
+    final_output = pathlib.Path.joinpath(timelapse_args.temp_directory, file.name)
+    ## FFmpeg is a little fucky so I think I have to do these in multiple steps
 
-    # # Testing
-    # terms = (
-    #     f'ffmpeg -ss {cut_in} -i "{file}" '
-    #     f"-vf setpts={1/timelapse_args.speed_factor}*PTS -c:v libx265 -r {timelapse_args.output_fps} -an "
-    #     f'-vf "fade=t=in:st={fade_in_start}:d={fade_in},fade=t=out:st={fade_out_start}:d={fade_out}" '
-    #     f'-t {cut_out} "{output}"'
-    # )
-
-    ### Building the terms string based on inputs
-    terms = "ffmpeg "
+    # FFmpeg clip the video
     # Get durations
-    durations = getClipFadeTime(file, 5, 20, 3, 3)
+    cut_duration = getClipTime(file, 5, 200, False)
+    temp_file = f"{file.stem}c{file.suffix}"
+    output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
+    terms = "ffmpeg "
     # Add the beginning cut
-    if durations["cut_in"] > 0:
-        terms += f'-ss {durations["cut_in"]} '
+    if cut_duration["cut_in"] > 0:
+        terms += f'-ss {cut_duration["cut_in"]} '
     # Add the input file
     terms += f'-i "{file}" '
-    # Add the vf
-    if (
-        durations["fade_in_l"] > 0
-        or durations["fade_out_l"] > 0
-        or timelapse_args.speed_factor != 0
-    ):
-        terms += f'-vf "'
-        # Add the fade in if there is one
-        if durations["fade_in_l"] > 0:
-            terms += f"fade=t=in:st="
-            # If we start the fade later start it then if not do it at the beginning
-            if durations["fade_in_s"] > 0:
-                terms += f'{durations["fade_in_s"]}:'
-            else:
-                terms += f"0:"
-            terms += f'd:{durations["fade_in_l"]},'
-        # Add the fade out if there is one
-        if durations["fade_out_l"] > 0:
-            terms += (
-                f'fade=t=out:st={durations["fade_out_s"]}:d={durations["fade_out_l"]},'
-            )
-        # Add the speed up factor
-        if timelapse_args.speed_factor != 0:
-            terms += f'setpts={1/timelapse_args.speed_factor}*PTS" '
-        # Replace the last character if there isn't a speed factor to close off the vf section
-        else:
-            terms = terms[:-1]
-            terms += f'"'
-    # Add the codec
-    terms += f"-c:v libx265 "
-    # Add the new framerate
-    if timelapse_args.output_fps > 0:
-        terms += f"-r {timelapse_args.output_fps} -an "
-    else:
-        terms += f"-an "
+    # Cop the video codec and remove audio
+    terms += f"-c:v copy -an "
     # Add the trim
-    if durations["cut_out"] > 0:
-        terms += f'-t {durations["cut_out"]} "{output}"'
+    if cut_duration["cut_out"] > 0:
+        terms += f'-t {cut_duration["new_duration"]} "{output}"'
     else:
         terms += f'"{output}"'
-    print(terms)
-    input()
     # Run ffmpeg
     timelapse = subprocess.Popen(
         terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
     # Run the command and wait for it to finish
     timelapse.wait()
+    current_input = output
+
+    # FFmpeg speed up the video
+    temp_file = f"{file.stem}s{file.suffix}"
+    output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
+    terms = "ffmpeg "
+    # Add the input file
+    terms += f'-i "{current_input}" '
+    # Add the speed up factor
+    if timelapse_args.speed_factor != 0:
+        terms += f'-vf "setpts={1/timelapse_args.speed_factor}*PTS" '
+    # Cop the video codec and remove audio (have to add the codec or it doesn't work, copying it doesn't work)
+    terms += f'-c:v libx265 -an "{output}"'
+    # Run ffmpeg
+    timelapse = subprocess.Popen(
+        terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    # Run the command and wait for it to finish
+    timelapse.wait()
+    os.remove(current_input)
+    current_input = output
+
+    # FFmpeg fade the video
+    # Get durations
+    fade_duration = getFadeTime(current_input, 1, 1)
+    terms = "ffmpeg "
+    # Add the input file
+    terms += f'-i "{current_input}" '
+    # Add the fades
+    if fade_duration["fade_in_l"] > 0 or fade_duration["fade_out_l"] > 0:
+        terms += f'-vf "'
+        # Add the fade in if there is one
+        if fade_duration["fade_in_l"] > 0:
+            terms += f'fade=t=in:st=0:d={fade_duration["fade_in_l"]},'
+        # Add the fade out if there is one
+        if fade_duration["fade_out_l"] > 0:
+            terms += f'fade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}"'
+        # If there isn't a fade out replace the comma with a double quote
+        else:
+            terms = terms[:-1]
+            terms += f'"'
+    # Copy the video codec and remove audio. For the final one add the specified framerate (for concat)
+    terms += f' -c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
+    # Run ffmpeg
+    timelapse = subprocess.Popen(
+        terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    # Run the command and wait for it to finish
+    timelapse.wait()
+    os.remove(current_input)
 
 
 # Function to create the timelapse and the log info
@@ -462,30 +469,36 @@ def createCombinedAudio(audio_files: list):
     )
 
 
+# Function to get the cut times
+def getClipTime(
+    file: pathlib.Path, cut_in: float, cut_out: float, cut_out_from_end: bool
+) -> dict:
+    # Get the length of the file
+    duration = getLength(file)
+    # If we are cutting seconds from the end
+    if cut_out_from_end:
+        # Get the time to cut at
+        new_duration = duration - cut_out
+    # If we are passing in the actual time to clip at
+    else:
+        new_duration = cut_out
+    # Get the fade times
+    return {"cut_in": cut_in, "cut_out": new_duration, "new_duration": new_duration}
+
+
 # Function to get the fade times
-def getClipFadeTime(
+def getFadeTime(
     file: pathlib.Path,
-    cut_in: float,
-    cut_out: float,
     fade_in_l: float,
     fade_out_l: float,
 ) -> dict:
     # Get the length of the file
     duration = getLength(file)
-    # Cutting stuff
-    if cut_out == 0:
-        new_duration = duration
-    else:
-        new_duration = cut_out
     # Get the fade times
-    fade_in_s = cut_in
-    fade_out_s = new_duration - fade_out_l
+    fade_out_s = duration - fade_out_l
     return {
-        "cut_in": cut_in,
-        "cut_out": cut_out,
         "fade_in_l": fade_in_l,
         "fade_out_l": fade_out_l,
-        "fade_in_s": fade_in_s,
         "fade_out_s": fade_out_s,
     }
 
