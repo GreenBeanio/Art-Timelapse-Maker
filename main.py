@@ -7,7 +7,7 @@
 # Author(s): [Garrett Johnson (GreenBeanio) - https://github.com/greenbeanio]
 # Maintainer: [Garrett Johnson (GreenBeanio) - https://github.com/greenbeanio]
 # Project Description: [This project is used to create timelapses from videos.]
-# File Description: [Creates the flask and celery apps.]
+# File Description: [Creates timelapses from videos (specifically for art).]
 
 # Imports
 import os
@@ -17,6 +17,7 @@ import sys
 import argparse
 import logging
 from typing import List
+import time
 
 
 # Class to store the user arguments
@@ -39,6 +40,7 @@ class userArguments:
         clear_output,
         output_fps,
         speed_factor,
+        verbose,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -56,6 +58,7 @@ class userArguments:
         self.clear_output = clear_output
         self.output_fps = output_fps
         self.speed_factor = speed_factor
+        self.verbose = verbose
 
 
 # Function to make sure passed paths exist
@@ -138,6 +141,7 @@ def getPaths() -> userArguments:
     clear_output = cli_args.clear_output
     output_fps = cli_args.output_fps
     speed_factor = cli_args.speed_factor
+    verbose = cli_args.verbose
     # Return the arguments
     return userArguments(
         video_source_directory,
@@ -156,6 +160,7 @@ def getPaths() -> userArguments:
         clear_output,
         output_fps,
         speed_factor,
+        verbose,
     )
 
 
@@ -229,7 +234,6 @@ def combineTimelapse(file: pathlib.Path) -> None:
     )
     # Run the command and wait for it to finish
     timelapse.wait()
-    print("yippers")
 
 
 # Command line arguments
@@ -316,6 +320,7 @@ parser.add_argument(
     help="Defines the output video fps",
     type=float,
     default=30,
+    # Default is 30, because 60fps for an art timelapse is overkill
 )
 parser.add_argument(
     "-sf",
@@ -323,16 +328,36 @@ parser.add_argument(
     help="How much do you want to speed up the timelapse by",
     type=float,
     default=30,
+    # Default is 30 because that's 1 frame per seconds (assuming 30fps video)
+)
+parser.add_argument(
+    "-ve",
+    "--verbose",
+    help="Displays in detail the step the program is doing",
+    action="store_true",
 )
 
 cli_args = parser.parse_args()
-# print(cli_args)
-
-# Create logger
-logger = logging.getLogger(__name__)
+print(cli_args)
 
 ## Get the command line arguments
 timelapse_args = getPaths()
+
+# Call the root logger basicConfig
+logging.basicConfig()
+# Create root logger
+logging.root.setLevel(logging.NOTSET)
+# Can do this instead of the above 2
+# logging.basicConfig(level=logging.NOTSET)
+
+# Creating logger for this module
+# logger = logging.getLogger(__name__)
+logger = logging.getLogger("Timelapse")
+# If the verbose option is passed set the logger level to info
+if timelapse_args.verbose:
+    logger.setLevel(logging.INFO)
+else:
+    logger.setLevel(logging.WARNING)
 
 # Get the files
 video_files = getFiles(timelapse_args.video_directory, [".mp4", ".mkv"])
@@ -345,16 +370,88 @@ if len(video_files) == 0:
 
 # Turn every video into a timelapse
 for video in video_files:
-    timelapseVideo(video)
+    # Check if a timelapse already exists
+    output = pathlib.Path.joinpath(timelapse_args.temp_directory, video.name)
+    if checkPath(output):
+        # Delete the existing file if that setting is enabled
+        if timelapse_args.override_temp_video:
+            logger.info(f'Deleting existing temp video "{output}"')
+            os.remove(output)
+            logger.info(f'Deleted existing temp video "{output}"')
+            # Create the new timelapse
+            logger.info(f'Creating new timelapse of "{video}" at "{output}"')
+            start = time.perf_counter()
+            timelapseVideo(video)
+            end = time.perf_counter()
+            duration = end - start
+            logger.info(
+                f'Successfully created a timelapse of "{video}" after {duration} seconds'
+            )
+    # If the file doesn't exist (duplicate code :pained_emoji:)
+    else:
+        # Create the timelapse
+        logger.info(f'Creating new timelapse of "{video}" at "{output}"')
+        start = time.perf_counter()
+        timelapseVideo(video)
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Successfully created a timelapse of "{video}" after {duration} seconds'
+        )
+    # Delete the source video file if that setting is enabled
+    if timelapse_args.delete_video:
+        logger.info(f'Deleting existing source video "{video}"')
+        os.remove(video)
+        logger.info(f'Deleted existing source video "{video}"')
+
+
 # Maybe add the ability to crop and transition video clips if wanted
 
 # Create a concat list of all the videos
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
 concat_video = pathlib.Path.joinpath(timelapse_args.temp_directory, "video.txt")
+logger.info(f'Creating the video concat file at "{concat_video}"')
 concatFile(timelapse_video_files, concat_video)
-combineTimelapse(concat_video)
-# Remove the video file
-##os.remove(concat_video)
+logger.info(f'Created the video concat file at "{concat_video}"')
+# Check if a output timelapse already exists
+output = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp4")
+if checkPath(output):
+    # Delete the existing output video file if that setting is enabled
+    if timelapse_args.override_output:
+        logger.info(f'Deleting existing output video "{output}"')
+        os.remove(output)
+        logger.info(f'Deleted existing output video "{output}"')
+        # Create the timelapse
+        logger.info(f'Creating the new output timelapse at "{output}"')
+        start = time.perf_counter()
+        combineTimelapse(concat_video)
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Successfully created the new output timelapse at "{video}" after {duration} seconds'
+        )
+# If the file doesn't exist (duplicate code :pained_emoji:)
+else:
+    # Create the timelapse
+    logger.info(f'Creating the new output timelapse at "{output}"')
+    start = time.perf_counter()
+    combineTimelapse(concat_video)
+    end = time.perf_counter()
+    duration = end - start
+    logger.info(
+        f'Successfully created the new output timelapse at "{video}" after {duration} seconds'
+    )
+# Delete the temporary video files if that setting is enabled
+if not timelapse_args.keep_temp_video:
+    logger.info(f"Deleting the temp videos")
+    # Doing this 1 by 1 instead of using shutil
+    for file in timelapse_video_files:
+        os.remove(file)
+    logger.info(f"Deleted the temp videos")
+# Remove the video concat file
+logger.info(f'Deleting the video concat file at "{concat_video}"')
+os.remove(concat_video)
+logger.info(f'Deleted the video concat file at "{concat_video}"')
 
 # Merge audio files if there are audio files (NOTE: Add transition later)
 if len(audio_files) != 0:
@@ -363,27 +460,110 @@ if len(audio_files) != 0:
     # Path for the outputted merged audio
     audio_out = pathlib.Path.joinpath(timelapse_args.output_directory, "audio.wav")
     # Creating the concat file
+    logger.info(f'Creating the audio concat file at "{audio_concat}"')
     concatFile(audio_files, audio_concat)
-    # Merge the audio files
-    audio_terms = f'ffmpeg -f concat -safe 0 -i "{audio_concat}" -c:a aac "{audio_out}"'
-    audio_combine = subprocess.Popen(
-        audio_terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    # Run the command and wait for it to finish
-    audio_combine.wait()
+    logger.info(f'Created the audio concat file at "{audio_concat}"')
+    # Check if a output audio already exists
+    if checkPath(audio_out):
+        # Delete the existing output audio file if that setting is enabled
+        if timelapse_args.override_output:
+            logger.info(f'Deleting existing output video "{audio_out}"')
+            os.remove(output)
+            logger.info(f'Deleted existing output video "{audio_out}"')
+            # Create the timelapse
+            logger.info(f'Creating the new audio for the timelapse at "{audio_out}"')
+            start = time.perf_counter()
+            # Merge the audio files
+            audio_terms = (
+                f'ffmpeg -f concat -safe 0 -i "{audio_concat}" -c:a "{audio_out}"'
+            )
+            audio_combine = subprocess.Popen(
+                audio_terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            # Run the command and wait for it to finish
+            audio_combine.wait()
+            end = time.perf_counter()
+            duration = end - start
+            logger.info(
+                f'Successfully created the new audio for the timelapse at "{audio_out}" after {duration} seconds'
+            )
+    # If the file doesn't exist (duplicate code :pained_emoji:)
+    else:
+        # Create the timelapse
+        logger.info(f'Creating the new audio for the timelapse at "{audio_out}"')
+        start = time.perf_counter()
+        # Merge the audio files
+        audio_terms = (
+            f'ffmpeg -f concat -safe 0 -i "{audio_concat}" -c:a mp3 "{audio_out}"'
+        )
+        audio_combine = subprocess.Popen(
+            audio_terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        # Run the command and wait for it to finish
+        audio_combine.wait()
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Successfully created the new audio for the timelapse at "{audio_out}" after {duration} seconds'
+        )
+    # Delete the source audio files if that setting is enabled
+    if timelapse_args.delete_audio:
+        logger.info(f"Deleting the source audio")
+        # Doing this 1 by 1 instead of using shutil
+        for file in audio_files:
+            os.remove(file)
+        logger.info(f"Deleted the source audio files")
     # Remove the audio file
-    ##os.remove(audio_concat)
+    logger.info(f'Deleting the audio concat file at "{audio_concat}"')
+    os.remove(audio_concat)
+    logger.info(f'Deleted the audio concat file at "{audio_concat}"')
+
     # Add the audio to the video (make sure the combined audio is longer than the video, it will use the shortest)
     video_out = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp4")
     video_out_audio = pathlib.Path.joinpath(
         timelapse_args.output_directory, "timelapse_audio.mp4"
     )
-    audio_terms = f'ffmpeg -i "{video_out}" -i "{audio_out}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
-    add_audio = subprocess.Popen(
-        audio_terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    # Run the command and wait for it to finish
-    add_audio.wait()
+    # Check if a output audio already exists
+    if checkPath(video_out_audio):
+        # Delete the existing output video with audio file if that setting is enabled
+        if timelapse_args.override_output:
+            logger.info(
+                f'Deleting existing output video with audio "{video_out_audio}"'
+            )
+            os.remove(video_out_audio)
+            logger.info(f'Deleted existing output video with audio "{video_out_audio}"')
+            # Create the video with audio
+            vide_audio_terms = f'ffmpeg -i "{video_out}" -i "{audio_out}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
+            add_audio = subprocess.Popen(
+                vide_audio_terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            # Create the timelapse
+            logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
+            start = time.perf_counter()
+            # Run the command and wait for it to finish
+            add_audio.wait()
+            end = time.perf_counter()
+            duration = end - start
+            logger.info(
+                f'Successfully created the timelapse with audio at "{video_out_audio}" after {duration} seconds'
+            )
+    # If the file doesn't exist (duplicate code :pained_emoji:)
+    else:
+        # Create the video with audio
+        vide_audio_terms = f'ffmpeg -i "{video_out}" -i "{audio_out}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
+        add_audio = subprocess.Popen(
+            vide_audio_terms, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        # Create the timelapse
+        logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
+        start = time.perf_counter()
+        # Run the command and wait for it to finish
+        add_audio.wait()
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Successfully created the timelapse with audio at "{video_out_audio}" after {duration} seconds'
+        )
 
 
 # Footer Comment
