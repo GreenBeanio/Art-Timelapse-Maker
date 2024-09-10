@@ -43,6 +43,18 @@ class userArguments:
         verbose,
         audio_speed_factor,
         prompt,
+        video_clip_in,
+        video_clip_out,
+        video_fade_in,
+        video_fade_out,
+        audio_clip_in,
+        audio_clip_out,
+        audio_fade_in,
+        audio_fade_out,
+        output_video_fade_in,
+        output_video_fade_out,
+        output_audio_fade_in,
+        output_audio_fade_out,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -63,6 +75,18 @@ class userArguments:
         self.verbose = verbose
         self.audio_speed_factor = audio_speed_factor
         self.prompt = prompt
+        self.video_clip_in = video_clip_in
+        self.video_clip_out = video_clip_out
+        self.video_fade_in = video_fade_in
+        self.video_fade_out = video_fade_out
+        self.audio_clip_in = audio_clip_in
+        self.audio_clip_out = audio_clip_out
+        self.audio_fade_in = audio_fade_in
+        self.audio_fade_out = audio_fade_out
+        self.output_video_fade_in = output_video_fade_in
+        self.output_video_fade_out = output_video_fade_out
+        self.output_audio_fade_in = output_audio_fade_in
+        self.output_audio_fade_out = output_audio_fade_out
 
 
 # Function to make sure passed paths exist
@@ -159,10 +183,74 @@ def getPaths() -> userArguments:
     else:
         logger.critical("Invalid speed factor")
         valid_arguments = False
-    if cli_args.audio_speed_factor >= 0.5 and cli_args.audio_speed_factor <= 100:
+    if (
+        cli_args.audio_speed_factor >= 0.5 and cli_args.audio_speed_factor <= 100
+    ) or cli_args.audio_speed_factor == 0:
         audio_speed_factor = cli_args.audio_speed_factor
     else:
         logger.critical("Invalid audio speed factor")
+        valid_arguments = False
+    ##########
+    if cli_args.video_clip_in >= 0:
+        video_clip_in = cli_args.video_clip_in
+    else:
+        logger.critical("Invalid video clip in")
+        valid_arguments = False
+    ###
+    if cli_args.video_clip_out >= 0:
+        video_clip_out = cli_args.video_clip_out
+    else:
+        logger.critical("Invalid video clip out")
+        valid_arguments = False
+    if cli_args.video_fade_in >= 0:
+        video_fade_in = cli_args.video_fade_in
+    else:
+        logger.critical("Invalid video fade in")
+        valid_arguments = False
+    if cli_args.video_fade_out >= 0:
+        video_fade_out = cli_args.video_fade_out
+    else:
+        logger.critical("Invalid video fade out")
+        valid_arguments = False
+    if cli_args.audio_clip_in >= 0:
+        audio_clip_in = cli_args.audio_clip_in
+    else:
+        logger.critical("Invalid audio clip in")
+        valid_arguments = False
+    if cli_args.audio_clip_out >= 0:
+        audio_clip_out = cli_args.audio_clip_out
+    else:
+        logger.critical("Invalid audio clip out")
+        valid_arguments = False
+    if cli_args.audio_fade_in >= 0:
+        audio_fade_in = cli_args.audio_fade_in
+    else:
+        logger.critical("Invalid audio fade in")
+        valid_arguments = False
+    if cli_args.audio_fade_out >= 0:
+        audio_fade_out = cli_args.audio_fade_out
+    else:
+        logger.critical("Invalid audio fade out")
+        valid_arguments = False
+    if cli_args.output_video_fade_in >= 0:
+        output_video_fade_in = cli_args.output_video_fade_in
+    else:
+        logger.critical("Invalid output video fade in")
+        valid_arguments = False
+    if cli_args.output_video_fade_out >= 0:
+        output_video_fade_out = cli_args.output_video_fade_out
+    else:
+        logger.critical("Invalid output video fade out")
+        valid_arguments = False
+    if cli_args.output_audio_fade_in >= 0:
+        output_audio_fade_in = cli_args.output_audio_fade_in
+    else:
+        logger.critical("Invalid output audio fade in")
+        valid_arguments = False
+    if cli_args.output_audio_fade_out >= 0:
+        output_audio_fade_out = cli_args.output_audio_fade_out
+    else:
+        logger.critical("Invalid output audio fade out")
         valid_arguments = False
 
     # Close application if inputs aren't valid
@@ -191,6 +279,18 @@ def getPaths() -> userArguments:
         verbose,
         audio_speed_factor,
         prompt,
+        video_clip_in,
+        video_clip_out,
+        video_fade_in,
+        video_fade_out,
+        audio_clip_in,
+        audio_clip_out,
+        audio_fade_in,
+        audio_fade_out,
+        output_video_fade_in,
+        output_video_fade_out,
+        output_audio_fade_in,
+        output_audio_fade_out,
     )
 
 
@@ -839,19 +939,36 @@ def getFadeTime(
     }
 
 
+# Function to return the default dictionary (from cli arguments)
+def userDefault(file_type: bool) -> dict:
+    if file_type:
+        speed_factor = timelapse_args.speed_factor
+        clip_in = timelapse_args.video_clip_in
+        clip_out = timelapse_args.video_clip_out
+        fade_in = timelapse_args.video_fade_in
+        fade_out = timelapse_args.video_fade_out
+    else:
+        speed_factor = timelapse_args.audio_speed_factor
+        clip_in = timelapse_args.audio_clip_in
+        clip_out = timelapse_args.audio_clip_out
+        fade_in = timelapse_args.audio_fade_in
+        fade_out = timelapse_args.audio_fade_out
+    return {
+        "speed_factor": speed_factor,
+        "clip_in": clip_in,
+        "clip_out": clip_out,
+        "clip_from_end": True,
+        "fade_in": fade_in,
+        "fade_out": fade_out,
+    }
+
+
 # Function to prompt user or input the default amount
 def promptUser(file: pathlib.Path, file_type: bool) -> dict:
     if timelapse_args.prompt:
         return userSettings(file, file_type)
     else:
-        return {
-            "speed_factor": 0,
-            "clip_in": 0,
-            "clip_out": 0,
-            "clip_from_end": 0,
-            "fade_in": 0,
-            "fade_out": 0,
-        }
+        return userDefault(file_type)
 
 
 # Function to get a int (bool) from the user
@@ -876,10 +993,10 @@ def getFloat(question: str) -> float:
         try:
             response = float(input(question))
             # All of out responses need to be positive
-            if response >= 0:
+            if response >= 0 or response == -1:
                 return response
             else:
-                print("Invalid input. Must be a positive float (decimal).")
+                print("Invalid input. Must be a positive float (decimal), 0, or -1")
         except KeyboardInterrupt:
             print("bye bye")
             sys.exit()
@@ -904,27 +1021,40 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
     # If they want to modify the file
     if wanted:
         # Inform them of the option
-        print("Answer the following questions  (0 means you don't want that option)")
+        print("Answer the following questions  (-1 means default, 0 means disable)")
         # Get the speed factor
         while True:
             speed_factor = getFloat("How much do you want to speed up the file?\n")
             # Check if it's valid
             if file_type:
+                if speed_factor == -1:
+                    speed_factor = timelapse_args.speed_factor
                 break
             else:
-                if (speed_factor >= 0.5 and speed_factor <= 100) or speed_factor == 0:
+                if (
+                    (speed_factor >= 0.5 and speed_factor <= 100)
+                    or speed_factor == 0
+                    or speed_factor == -1
+                ):
+                    if speed_factor == -1:
+                        speed_factor = timelapse_args.audio_speed_factor
                     break
                 else:
                     print(
-                        "Speed factor for audio must be between 0.5 and 100, or 0 to disable"
+                        "Speed factor for audio must be between 0.5 and 100, 0 to disable, or -1 for default"
                     )
         # Get file modifications
         while True:
             # Get the clip in duration
             clip_in = getFloat("How many seconds do you want to clip from the start?\n")
+            if clip_in == -1:
+                if file_type:
+                    clip_in = timelapse_args.video_clip_in
+                else:
+                    clip_in = timelapse_args.audio_clip_in
             # Get the type of clip from the end
             clip_from_end = getIntBool(
-                "Do you want to clip out with the ending time (in seconds) of the clip [0] or with the seconds cut from the end [1]?\n"
+                "Do you want to clip out with the ending time (in seconds) of the clip [0] or with the seconds cut from the end [1]? (If using the default option for clip out this choice doesn't matter)\n"
             )
             if clip_from_end == 0:
                 clip_from_end = False
@@ -939,10 +1069,27 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                 clip_out = getFloat(
                     "What time (in seconds) do you want to file to end?\n"
                 )
+            if clip_out == -1:
+                # Going to assume if you're using the default it's form the end not an exact time
+                clip_from_end = True
+                if file_type:
+                    clip_out = timelapse_args.video_clip_out
+                else:
+                    clip_out = timelapse_args.audio_clip_out
             # Get the fade in duration
             fade_in = getFloat("How many seconds do you wish to fade in?\n")
+            if fade_in == -1:
+                if file_type:
+                    fade_in = timelapse_args.video_fade_in
+                else:
+                    fade_in = timelapse_args.video_fade_out
             # Get the fade out duration
             fade_out = getFloat("How many seconds do you wish to fade out?\n")
+            if fade_out == -1:
+                if file_type:
+                    fade_out = timelapse_args.video_fade_out
+                else:
+                    fade_out = timelapse_args.audio_fade_out
             # Validate the options given
             # Clip
             if clip_in != 0 or clip_out != 0:
@@ -954,7 +1101,7 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                     break
             else:
                 clipped_duration = getLength(file)
-            # Sped up duraiton
+            # Sped up duration
             if speed_factor != 0 and sped_duration != 1:
                 sped_duration = clipped_duration / speed_factor
             else:
@@ -975,16 +1122,9 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                 "fade_in": fade_in,
                 "fade_out": fade_out,
             }
-    # Return the default options
+    # Return the default options (global)
     else:
-        return {
-            "speed_factor": 0,
-            "clip_in": 0,
-            "clip_out": 0,
-            "clip_from_end": 0,
-            "fade_in": 0,
-            "fade_out": 0,
-        }
+        return userDefault(file_type)
 
 
 # Command line arguments
@@ -1092,8 +1232,8 @@ parser.add_argument(
     "--audio_speed_factor",
     help="How much do you want to speed up the audio by",
     type=float,
-    default=1,
-    # Default is 1 because it's unchanged
+    default=0,
+    # Default is 0 to disable it, could also be 1
 )
 parser.add_argument(
     "-p",
@@ -1101,6 +1241,108 @@ parser.add_argument(
     help="Prompts the user about clipping, fading, and speed per file",
     action="store_true",
 )
+parser.add_argument(
+    "-vci",
+    "--video_clip_in",
+    help="How many seconds you want to clip from the start of the video by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-vco",
+    "--video_clip_out",
+    help="How many seconds you want to clip from the end of the video by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-vfi",
+    "--video_fade_in",
+    help="How many seconds you want fade in to the video by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-vfo",
+    "--video_fade_out",
+    help="How many seconds you want fade out of the video by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-aci",
+    "--audio_clip_in",
+    help="How many seconds you want to clip from the start of the audio by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-aco",
+    "--audio_clip_out",
+    help="How many seconds you want to clip from the end of the audio by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-afi",
+    "--audio_fade_in",
+    help="How many seconds you want fade in to the audio by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-afo",
+    "--audio_fade_out",
+    help="How many seconds you want fade out of the audio by default",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-ovfi",
+    "--output_video_fade_in",
+    help="How many seconds you want fade in to the output video",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-ovfo",
+    "--output_video_fade_out",
+    help="How many seconds you want fade out of the output video",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-oafi",
+    "--output_audio_fade_in",
+    help="How many seconds you want fade in to the output audio",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-oafo",
+    "--output_audio_fade_out",
+    help="How many seconds you want fade out of the output audio",
+    type=float,
+    default=0,
+)
+
+############# Possible options
+parser.add_argument(
+    "-cl",
+    "--compression_level",
+    help="How compressed do you want the output",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-rs",
+    "--resize",
+    help="What scale do you want to resize the output",
+    type=float,
+    default=0,
+)
+################
+
 
 cli_args = parser.parse_args()
 print(cli_args)  # Temporary print
@@ -1119,10 +1361,6 @@ logger = logging.getLogger("Timelapse")
 ## Get the command line arguments and verifying them
 timelapse_args = getPaths()
 
-############## Need to make a function to verify valid inputs, like the speed not being 0 or less than 0, same with the fps
-############## Also add a function to resize the videos maybe, compress too maybe
-### Also need to use the arguments for deleting temp and output on load ... haven't set that up yet
-
 # If the verbose option is passed set the logger level to info
 if timelapse_args.verbose:
     logger.setLevel(logging.INFO)
@@ -1133,52 +1371,53 @@ else:
 video_files = getFiles(timelapse_args.video_directory, [".mp4", ".mkv"])
 audio_files = getFiles(timelapse_args.audio_directory, [".wav", ".mp3"])
 
-# Check if there are videos in the video directory
+# Create a concat list of all the temp files (to ignore asking the user about them)
+timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
+timelapse_audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"])
+
+#### Add saving and loading from json (cli argument possible) [Not sure about this honestly]
+userAnswers = {}
+# Get the user information about the clips and fades
+for video in video_files:
+    if video not in timelapse_video_files and not timelapse_args.override_temp_video:
+        userAnswers[video] = promptUser(video, True)
+for audio in audio_files:
+    if audio not in timelapse_video_files and not timelapse_args.override_temp_audio:
+        userAnswers[audio] = promptUser(audio, False)
+
+# Check if there are videos in the video directory (((( DO I REALLY CARE? I could still run the audio and video Separate))))
 if len(video_files) == 0:
     logger.critical("There are no videos in the video file")
     sys.exit()
 
-########### New
-#### Add saving and loading from json (cli argument possible)
-#### Add argument to set global settings for video and audio (probably separate)
-#### Need to do this better to also ignore the already existing files if we don't override temp files
-userAnswers = {}
-# Get the user information about the clips and fades
-for video in video_files:
-    userAnswers[video] = promptUser(video, True)
-for audio in audio_files:
-    userAnswers[audio] = promptUser(audio, False)
-########### End New
+# If there are videos
+if len(video_files) == 0:
+    # Create timelapses
+    createTimelapses(video_files)
+    # Creating the concat of the timelapse videos
+    createCombinedTimelapse(timelapse_video_files)
 
-# Create timelapses
-createTimelapses(video_files)
+# If there is audio
+if len(audio_files) != 0:
+    # Create the modified audio
+    createAudio(audio_files)
+    # Combine the audio files
+    createCombinedAudio(timelapse_audio_files)
 
-# Create the modified audio
-createAudio(audio_files)
-
-# Create a concat list of all the temp files
+# Create an updated concat list of all the temp files
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
 timelapse_audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"])
 
-
-# Creating the concat of the timelapse videos
-createCombinedTimelapse(timelapse_video_files)
-
-# Merge audio files if there are audio files (NOTE: Add transition later)
-if len(audio_files) != 0:
-    # Create the modified audio files
-    #####
-    # Create the combined audio files
-    createCombinedAudio(timelapse_audio_files)
-
-    ############
-
-    # Add the audio to the video (make sure the combined audio is longer than the video, it will use the shortest) [Maybe check for that somehow]
-    video_out = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp4")
+# Combine the audio and video
+# Get the paths where the files should be
+video_out = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp4")
+audio_out = pathlib.Path.joinpath(timelapse_args.output_directory, "audio.wav")
+# Check if they exist
+if checkPath(video_out) and checkPath(audio_out):
+    # Output path
     video_out_audio = pathlib.Path.joinpath(
         timelapse_args.output_directory, "timelapse_audio.mp4"
     )
-    audio_out = pathlib.Path.joinpath(timelapse_args.output_directory, "audio.wav")
     # Check if a output audio already exists
     if checkPath(video_out_audio):
         # Delete the existing output video with audio file if that setting is enabled
@@ -1214,7 +1453,6 @@ if len(audio_files) != 0:
         logger.info(
             f'Successfully created the timelapse with audio at "{video_out_audio}" after {duration} seconds'
         )
-
 
 # Footer Comment
 # History of Contributions:
