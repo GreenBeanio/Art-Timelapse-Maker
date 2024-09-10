@@ -1795,9 +1795,9 @@ if timelapse_args.clear_temp_video:
         )
     logger.info(f"Deleted all the existing temp videos")
 if timelapse_args.clear_settings:
-    video_files = getFiles(timelapse_args.settings_directory, [".json"])
+    setting_files = getFiles(timelapse_args.settings_directory, [".json"])
     logger.info(f"Deleting all the existing settings")
-    for file in output_files:
+    for file in setting_files:
         delLog(
             file,
             "Deleting the existing settings at",
