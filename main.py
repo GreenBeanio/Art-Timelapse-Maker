@@ -1460,7 +1460,7 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
             else:
                 clipped_duration = getLength(file)
             # Sped up duration
-            if speed_factor != 0 and sped_duration != 1:
+            if speed_factor != 0 and speed_factor != 1:
                 sped_duration = clipped_duration / speed_factor
             else:
                 sped_duration = clipped_duration
@@ -1471,15 +1471,15 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                         f"Total fade time is longer than the sped up video ({round(sped_duration,2)} seconds)"
                     )
                     break
-            # Return the use settings
-            return {
-                "speed_factor": speed_factor,
-                "clip_in": clip_in,
-                "clip_out": clip_out,
-                "clip_from_end": clip_from_end,
-                "fade_in": fade_in,
-                "fade_out": fade_out,
-            }
+        # Return the use settings
+        return {
+            "speed_factor": speed_factor,
+            "clip_in": clip_in,
+            "clip_out": clip_out,
+            "clip_from_end": clip_from_end,
+            "fade_in": fade_in,
+            "fade_out": fade_out,
+        }
     # Return the default options (global)
     else:
         return userDefault(file_type)
