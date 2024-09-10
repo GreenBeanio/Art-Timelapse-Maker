@@ -154,7 +154,7 @@ def getPaths() -> userArguments:
     else:
         logger.critical("Invalid fps")
         valid_arguments = False
-    if cli_args.speed_factor > 0:
+    if cli_args.speed_factor >= 0:
         speed_factor = cli_args.speed_factor
     else:
         logger.critical("Invalid speed factor")
@@ -269,9 +269,9 @@ def timelapseVideo(
 
     # Check if the file needs no modification
     if not (
-        (cut_in > 0 or cut_out > 0)
-        or (timelapse_args.speed_factor > 0 and timelapse_args.speed_factor != 1)
-        or (fade_in > 0 or fade_out > 0)
+        (cut_in != 0 or cut_out != 0)
+        or (timelapse_args.speed_factor != 0 and timelapse_args.speed_factor != 1)
+        or (fade_in != 0 or fade_out != 0)
     ):
         # All we need to do is change the codec and the framerate to match the rest of the videos
         terms = f'ffmpeg -i "{file}"-c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
@@ -284,27 +284,27 @@ def timelapseVideo(
     first = True
 
     # FFmpeg clip the video
-    if cut_in > 0 or cut_out > 0:
+    if cut_in != 0 or cut_out != 0:
         logger.info(f'Clipping the temp timelapse of "{file}"')
         start = time.perf_counter()
         # Get durations
         cut_duration = getClipTime(current_input, cut_in, cut_out, cut_from_end)
         terms = "ffmpeg "
         # Add the beginning cut
-        if cut_duration["cut_in"] > 0:
+        if cut_duration["cut_in"] != 0:
             terms += f'-ss {cut_duration["cut_in"]} '
         # Add the input file
         terms += f'-i "{file}" '
         # Check other possibilities to see what output to use
-        if (fade_in > 0 or fade_out > 0) or (
-            timelapse_args.speed_factor != 1 and timelapse_args.speed_factor > 0
+        if (fade_in != 0 or fade_out != 0) or (
+            timelapse_args.speed_factor != 1 and timelapse_args.speed_factor != 0
         ):
             temp_file = f"{file.stem}c{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Copy the video codec and remove audio
             terms += f"-c:v copy -an "
             # Add the trim
-            if cut_duration["cut_out"] > 0:
+            if cut_duration["cut_out"] != 0:
                 terms += f'-t {cut_duration["new_duration"]} "{output}"'
             else:
                 terms += f'"{output}"'
@@ -325,7 +325,7 @@ def timelapseVideo(
             terms += f"-c:v libx265 -r {timelapse_args.output_fps} -an "
             output = final_output
             # Add the trim
-            if cut_duration["cut_out"] > 0:
+            if cut_duration["cut_out"] != 0:
                 terms += f'-t {cut_duration["new_duration"]} "{output}"'
             else:
                 terms += f'"{output}"'
@@ -340,7 +340,7 @@ def timelapseVideo(
             return
 
     # FFmpeg speed up the video
-    if timelapse_args.speed_factor > 0 and timelapse_args.speed_factor != 1:
+    if timelapse_args.speed_factor != 0 and timelapse_args.speed_factor != 1:
         logger.info(f'Speeding up the temp timelapse of "{file}"')
         start = time.perf_counter()
         terms = "ffmpeg "
@@ -349,7 +349,7 @@ def timelapseVideo(
             f'-i "{current_input}" -vf "setpts={1/timelapse_args.speed_factor}*PTS" '
         )
         # Check other possibilities to see what output to use
-        if fade_in > 0 or fade_out > 0:
+        if fade_in != 0 or fade_out != 0:
             temp_file = f"{file.stem}s{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Remove audio (have to add the codec or it doesn't work, copying it doesn't work)
@@ -385,7 +385,7 @@ def timelapseVideo(
             return
 
     # FFmpeg fade the video
-    if fade_in > 0 or fade_out > 0:
+    if fade_in != 0 or fade_out != 0:
         logger.info(f'Fading the temp timelapse of "{file}"')
         start = time.perf_counter()
         # Get durations
@@ -396,10 +396,10 @@ def timelapseVideo(
         # Add the fades
         terms += f'-vf "'
         # Add the fade in if there is one
-        if fade_duration["fade_in_l"] > 0:
+        if fade_duration["fade_in_l"] != 0:
             terms += f'fade=t=in:st=0:d={fade_duration["fade_in_l"]},'
         # Add the fade out if there is one
-        if fade_duration["fade_out_l"] > 0:
+        if fade_duration["fade_out_l"] != 0:
             terms += f'fade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}"'
         # If there isn't a fade out replace the comma with a double quote
         else:
@@ -547,12 +547,12 @@ def timelapseAudio(
 
     # Check if the file needs no modification
     if not (
-        (cut_in > 0 or cut_out > 0)
+        (cut_in != 0 or cut_out != 0)
         or (
-            timelapse_args.audio_speed_factor > 0
+            timelapse_args.audio_speed_factor != 0
             and timelapse_args.audio_speed_factor != 1
         )
-        or (fade_in > 0 or fade_out > 0)
+        or (fade_in != 0 or fade_out != 0)
     ):
         # All we need to do is change the codec to match the rest of the audio
         terms = f'ffmpeg -i "{file}" -c:a mp3 "{final_output}"'
@@ -565,18 +565,18 @@ def timelapseAudio(
     first = True
 
     # FFmpeg clip the audio
-    if cut_in > 0 or cut_out > 0:
+    if cut_in != 0 or cut_out != 0:
         logger.info(f'Clipping the temp audio of "{file}"')
         start = time.perf_counter()
         # Get durations
         cut_duration = getClipTime(current_input, cut_in, cut_out, cut_from_end)
         terms = "ffmpeg "
         # Add the beginning cut
-        if cut_duration["cut_in"] > 0:
+        if cut_duration["cut_in"] != 0:
             terms += f'-ss {cut_duration["cut_in"]} '
         # Check other possibilities to see what output to use
-        if (fade_in > 0 or fade_out > 0) or (
-            timelapse_args.audio_speed_factor > 0
+        if (fade_in != 0 or fade_out != 0) or (
+            timelapse_args.audio_speed_factor != 0
             and timelapse_args.audio_speed_factor != 1
         ):
             # Add the input file (can copy codec on the trim)
@@ -584,7 +584,7 @@ def timelapseAudio(
             temp_file = f"{file.stem}c{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Add the trim
-            if cut_duration["cut_out"] > 0:
+            if cut_duration["cut_out"] != 0:
                 terms += f'-t {cut_duration["new_duration"]} "{output}"'
             else:
                 terms += f'"{output}"'
@@ -603,7 +603,7 @@ def timelapseAudio(
             terms += f'-i "{file}" -c:a mp3 '
             output = final_output
             # Add the trim
-            if cut_duration["cut_out"] > 0:
+            if cut_duration["cut_out"] != 0:
                 terms += f'-t {cut_duration["new_duration"]} "{output}"'
             else:
                 terms += f'"{output}"'
@@ -618,14 +618,17 @@ def timelapseAudio(
             return
 
     # FFmpeg speed up the audio
-    if timelapse_args.audio_speed_factor > 0 and timelapse_args.audio_speed_factor != 1:
+    if (
+        timelapse_args.audio_speed_factor != 0
+        and timelapse_args.audio_speed_factor != 1
+    ):
         logger.info(f'Speeding up the temp audio of "{file}"')
         start = time.perf_counter()
         terms = "ffmpeg "
         # Add the input file and speed up factor (need to change codec)
         terms += f'-i "{current_input}" -af "atempo={timelapse_args.audio_speed_factor}" -c:a mp3 '
         # Check other possibilities to see what output to use
-        if fade_in > 0 or fade_out > 0:
+        if fade_in != 0 or fade_out != 0:
             temp_file = f"{file.stem}s{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Remove audio (have to add the codec or it doesn't work, copying it doesn't work)
@@ -660,7 +663,7 @@ def timelapseAudio(
             return
 
     # FFmpeg fade the video
-    if fade_in > 0 or fade_out > 0:
+    if fade_in != 0 or fade_out != 0:
         logger.info(f'Fading the temp audio of "{file}"')
         start = time.perf_counter()
         # Get durations
@@ -671,10 +674,10 @@ def timelapseAudio(
         # Add the fades
         terms += f'-af "'
         # Add the fade in if there is one
-        if fade_duration["fade_in_l"] > 0:
+        if fade_duration["fade_in_l"] != 0:
             terms += f'afade=t=in:st=0:d={fade_duration["fade_in_l"]},'
         # Add the fade out if there is one
-        if fade_duration["fade_out_l"] > 0:
+        if fade_duration["fade_out_l"] != 0:
             terms += f'afade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}"'
         # If there isn't a fade out replace the comma with a double quote
         else:
@@ -907,10 +910,7 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
             speed_factor = getFloat("How much do you want to speed up the file?\n")
             # Check if it's valid
             if file_type:
-                if speed_factor >= 0:
-                    break
-                else:
-                    print("Speed factor for video must be more than 0, or 0 to disable")
+                break
             else:
                 if (speed_factor >= 0.5 and speed_factor <= 100) or speed_factor == 0:
                     break
@@ -945,7 +945,7 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
             fade_out = getFloat("How many seconds do you wish to fade out?\n")
             # Validate the options given
             # Clip
-            if clip_in > 0 or clip_out > 0:
+            if clip_in != 0 or clip_out != 0:
                 clipped_duration = getClipTime(file, clip_in, clip_out, clip_from_end)[
                     "new_duration"
                 ]
@@ -955,12 +955,12 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
             else:
                 clipped_duration = getLength(file)
             # Sped up duraiton
-            if speed_factor > 0:
+            if speed_factor != 0 and sped_duration != 1:
                 sped_duration = clipped_duration / speed_factor
             else:
                 sped_duration = clipped_duration
             # Fade
-            if fade_in > 0 or fade_out > 0:
+            if fade_in != 0 or fade_out != 0:
                 if not (fade_in + fade_out) > sped_duration:
                     print(
                         f"Total fade time is longer than the sped up video ({round(sped_duration,2)} seconds)"
