@@ -116,9 +116,7 @@ def getPaths() -> userArguments:
     # Getting the video directory
     if cli_args.video_directory is None:
         video_source_directory = pathlib.Path.joinpath(cwd, "video")
-        if not checkPath(video_source_directory):
-            logger.critical('No "video" folder in directory or passed video directory')
-            valid_arguments = False
+        createDir(video_source_directory)
     else:
         if checkPath(cli_args.video_directory):
             video_source_directory = cli_args.video_directory
@@ -128,9 +126,7 @@ def getPaths() -> userArguments:
     # Getting the audio directory
     if cli_args.audio_directory is None:
         audio_source_directory = pathlib.Path.joinpath(cwd, "audio")
-        if not checkPath(audio_source_directory):
-            logger.critical('No "audio" folder in directory or passed audio directory')
-            valid_arguments = False
+        createDir(audio_source_directory)
     else:
         if checkPath(cli_args.audio_directory):
             audio_source_directory = cli_args.audio_directory
