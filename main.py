@@ -18,6 +18,11 @@ import argparse
 import logging
 from typing import List
 import time
+import json
+import datetime
+
+# Recording the starting time just for fun
+total_start = time.perf_counter()
 
 
 # Class to store the user arguments
@@ -59,6 +64,11 @@ class userArguments:
         keep_unfaded_audio,
         compression_level,
         resize,
+        settings_directory,
+        use_settings,
+        override_settings,
+        clear_settings,
+        delete_settings,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -95,6 +105,11 @@ class userArguments:
         self.keep_unfaded_audio = keep_unfaded_audio
         self.compression_level = compression_level
         self.resize = resize
+        self.settings_directory = settings_directory
+        self.use_settings = use_settings
+        self.override_settings = override_settings
+        self.clear_settings = clear_settings
+        self.delete_settings = delete_settings
 
 
 # Function to make sure passed paths exist
@@ -161,6 +176,16 @@ def getPaths() -> userArguments:
         else:
             logger.critical("Invalid temp directory")
             valid_arguments = False
+    # Getting the settings directory
+    if cli_args.settings_directory is None:
+        settings_directory = pathlib.Path.joinpath(cwd, "settings")
+        createDir(settings_directory)
+    else:
+        if checkPath(cli_args.settings_directory):
+            settings_directory = cli_args.settings_directory
+        else:
+            logger.critical("Invalid temp directory")
+            valid_arguments = False
 
     # Getting the bool options
     delete_video = cli_args.delete_source_video
@@ -177,6 +202,10 @@ def getPaths() -> userArguments:
     prompt = cli_args.prompt
     keep_unfaded_video = cli_args.keep_unfaded_video
     keep_unfaded_audio = cli_args.keep_unfaded_audio
+    use_settings = cli_args.use_settings
+    override_settings = cli_args.override_settings
+    clear_settings = cli_args.clear_settings
+    delete_settings = cli_args.delete_settings
 
     # Validating other inputs
     if cli_args.output_fps > 0:
@@ -311,6 +340,11 @@ def getPaths() -> userArguments:
         keep_unfaded_audio,
         compression_level,
         resize,
+        settings_directory,
+        use_settings,
+        override_settings,
+        clear_settings,
+        delete_settings,
     )
 
 
@@ -351,7 +385,7 @@ def getLength(file: pathlib.Path) -> float:
         terms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
     # Run the command and get the result
-    duration, err = ffprobe.communicate(timeout=30)
+    duration, err = ffprobe.communicate()
     return float(duration)
 
 
@@ -362,7 +396,7 @@ def getFramerate(file: pathlib.Path) -> float:
         terms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
     # Run the command and get the result
-    result, err = ffprobe.communicate(timeout=30)
+    result, err = ffprobe.communicate()
     terms = result.split("/")
     framerate = round(float(int(terms[0]) / int(terms[1])), 2)
     return framerate
@@ -566,9 +600,18 @@ def logTimelapses(video: pathlib.Path, output: pathlib.Path) -> None:
 
 # Function to delete a file and log the info
 def delLog(file: pathlib.Path, notice1: str, notice2: str) -> None:
-    logger.info(f'{notice1} "{file}"')
-    os.remove(file)
-    logger.info(f'{notice2} "{file}"')
+    try:
+        logger.info(f'{notice1} "{file}"')
+        if os.path.exists(file):
+            if os.path.isfile(file):
+                os.remove(file)
+            elif os.path.isdir(file):
+                os.rmdir(file)
+            logger.info(f'{notice2} "{file}"')
+        else:
+            logger.info(f'Tried to delete "{file}" but it doesn\t exist')
+    except:
+        logger.warning(f'Couldn\'t delete at "{file}"')
 
 
 # Function to create timelapses
@@ -1115,6 +1158,51 @@ def promptUser(file: pathlib.Path, file_type: bool) -> dict:
         return userDefault(file_type)
 
 
+# Function to get which files to ask the user about
+def promptFiles(
+    files: dict, temp_files: list, file_type: bool, current_answers: dict
+) -> dict:
+    # For every file passed in
+    for file in files:
+        # If we're using settings
+        if timelapse_args.use_settings:
+            # If the file exists in the dictionary already and we're overriding it,
+            # or if the file doesn't exist in the dictionary
+            if (
+                file in current_answers.keys() and timelapse_args.override_settings
+            ) or file not in current_answers.keys():
+                # Check that the file isn't already a temp file
+                if file not in temp_files:
+                    current_answers[file] = promptUser(file, file_type)
+                # If they are a temp video file
+                elif file_type:
+                    # If we're overriding temp videos
+                    if timelapse_args.override_temp_video:
+                        current_answers[file] = promptUser(file, file_type)
+                # If it's audio
+                else:
+                    # If we're overriding temp audio
+                    if timelapse_args.override_temp_audio:
+                        current_answers[file] = promptUser(file, file_type)
+        # If we're not using settings
+        else:
+            # Check that the file isn't already a temp file
+            if file not in temp_files:
+                current_answers[file] = promptUser(file, file_type)
+            # If they are a temp video file
+            elif file_type:
+                # If we're overriding temp videos
+                if timelapse_args.override_temp_video:
+                    current_answers[file] = promptUser(file, file_type)
+            # If it's audio
+            else:
+                # If we're overriding temp audio
+                if timelapse_args.override_temp_audio:
+                    current_answers[file] = promptUser(file, file_type)
+    # Return the updating dictionary
+    return current_answers
+
+
 # Function to get a int (bool) from the user
 def getIntBool(question: str) -> float:
     while True:
@@ -1205,8 +1293,7 @@ def createModifiedOutput(input_path: pathlib.Path, output_path: pathlib.Path) ->
     if timelapse_args.compression_level != 0:
         video_terms += f"-crf {timelapse_args.compression_level} "
     # Change the video codec and remove audio.
-    # video_terms += f'-c:v libx265 -r {timelapse_args.output_fps} "{video_out_audio}"'
-    video_terms += f'-c copy "{output_path}"'
+    video_terms += f'-c:v libx265 -r {timelapse_args.output_fps} "{output_path}"'
     # Run ffmpeg
     runFFmpeg(video_terms)
     # End the log
@@ -1242,10 +1329,43 @@ def modifyOutput(input_path: pathlib.Path) -> None:
         createModifiedOutput(input_path, modified_video_out)
 
 
-###### NEW
+# Function to read json of the userSetting
+def loadJson(file: pathlib.Path) -> dict:
+    with open(file, "r") as json_file:
+        data = json.load(json_file)
+    # Turn the strings into paths
+    new_data = convertFromJson(data)
+    return new_data
+
+
+# Function to transform all the strings from the settings into paths
+def convertFromJson(settings: dict) -> dict:
+    new_dict = {}
+    for path, settings in settings.items():
+        new_path = pathlib.Path(path)
+        new_dict[new_path] = settings
+    return new_dict
+
+
+# Function to transform all the paths in the settings into strings
+def convertToJson(settings: dict) -> dict:
+    new_dict = {}
+    for path, settings in settings.items():
+        new_path = str(path.resolve())
+        new_dict[new_path] = settings
+    return new_dict
+
+
+# Function to write json of the userSetting
+def writeJson(file: pathlib.Path, userSettings: dict) -> None:
+    # Transform the paths into strings
+    write_dict = convertToJson(userSettings)
+    with open(file, "w+") as json_file:
+        json_dump = json.dumps(write_dict, indent=4)
+        json_file.write(json_dump)
+
+
 # Function to get the user to enter the information about the clip and fade for each file
-# Should add cli settings for this as well possibly to add a global setting instead
-# Should also store it as json possibly for later use, but really there probably shouldn't be later use
 def userSettings(file: pathlib.Path, file_type: bool) -> dict:
     print(f"The following questions are about the file {file.name}:")
     # Ask if they even want to modify this file
@@ -1589,9 +1709,39 @@ parser.add_argument(
     type=float,
     default=0,
 )
+parser.add_argument(
+    "-s",
+    "--settings_directory",
+    help="Path to the settings directory",
+    type=pathlib.Path,
+)
+parser.add_argument(
+    "-us",
+    "--use_settings",
+    help="If we're using any saved settings",
+    action="store_true",
+)
+parser.add_argument(
+    "-os",
+    "--override_settings",
+    help="If we're going to change the settings with a prompt",
+    action="store_true",
+)
+parser.add_argument(
+    "-cs",
+    "--clear_settings",
+    help="Deletes the existing settings before creating new settings if passed",
+    action="store_true",
+)
+parser.add_argument(
+    "-ds",
+    "--delete_settings",
+    help="Deletes the settings file if passed",
+    action="store_true",
+)
 
 cli_args = parser.parse_args()
-# print(cli_args)
+# print(cli_args)  # Temporary print for testing
 
 # Call the root logger basicConfig
 logging.basicConfig()
@@ -1644,6 +1794,16 @@ if timelapse_args.clear_temp_video:
             "Deleted the existing temp videos at",
         )
     logger.info(f"Deleted all the existing temp videos")
+if timelapse_args.clear_settings:
+    video_files = getFiles(timelapse_args.settings_directory, [".json"])
+    logger.info(f"Deleting all the existing settings")
+    for file in output_files:
+        delLog(
+            file,
+            "Deleting the existing settings at",
+            "Deleted the existing settings at",
+        )
+    logger.info(f"Deleted all the existing settings")
 
 # Get the files
 video_files = getFiles(timelapse_args.video_directory, [".mp4", ".mkv"])
@@ -1653,15 +1813,24 @@ audio_files = getFiles(timelapse_args.audio_directory, [".wav", ".mp3"])
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
 timelapse_audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"])
 
-#### Add saving and loading from json (cli argument possible) [Not sure about this honestly]
-userAnswers = {}
-# Get the user information about the clips and fades
-for video in video_files:
-    if video not in timelapse_video_files and not timelapse_args.override_temp_video:
-        userAnswers[video] = promptUser(video, True)
-for audio in audio_files:
-    if audio not in timelapse_video_files and not timelapse_args.override_temp_audio:
-        userAnswers[audio] = promptUser(audio, False)
+# If using settings attempt ot load them
+json_file = pathlib.Path.joinpath(timelapse_args.settings_directory, "settings.json")
+if timelapse_args.use_settings and checkPath(json_file):
+    try:
+        userAnswers = loadJson(json_file)
+        logger.info(f"Loaded settings from {json_file}")
+    except:
+        userAnswers = {}
+        logger.warning(f"Settings file {json_file} is invalid and will be ignored")
+else:
+    userAnswers = {}
+
+# Get the user settings
+userAnswers = promptFiles(video_files, timelapse_video_files, True, userAnswers)
+userAnswers = promptFiles(audio_files, timelapse_audio_files, False, userAnswers)
+
+# Save the settings
+writeJson(json_file, userAnswers)
 
 # If there are videos
 if len(video_files) != 0:
@@ -1707,6 +1876,56 @@ if timelapse_args.resize != 0 or timelapse_args.compression_level != 0:
     # If no audio timelapse exists use the main timelapse
     elif checkPath(video_out):
         modifyOutput(video_out)
+
+
+# Deleting unwanted files/directories
+# If the directory for source files should be empty
+if timelapse_args.delete_video:
+    delLog(
+        timelapse_args.video_directory,
+        "Deleting the video source directory ",
+        "Deleted the video source directory ",
+    )
+if timelapse_args.delete_audio:
+    delLog(
+        timelapse_args.audio_directory,
+        "Deleting the audio source directory ",
+        "Deleted the audio source directory ",
+    )
+# Delete the settings if passed (even if we just saved them earlier :cry:)
+if timelapse_args.delete_settings:
+    delLog(
+        json_file,
+        "Deleting the settings at",
+        "Deleted the settings at",
+    )
+    delLog(
+        timelapse_args.settings_directory,
+        "Deleting the settings directory ",
+        "Deleted the settings directory ",
+    )
+# Deleting the temp directory if both temp audio and video have been removed
+if not timelapse_args.keep_temp_video and not timelapse_args.keep_temp_audio:
+    delLog(
+        timelapse_args.temp_directory,
+        "Deleting the temp directory ",
+        "Deleted the temp directory ",
+    )
+# Heck why not even try to delete the output directory (it'll only delete it if empty)
+if len(getFiles(timelapse_args.output_directory, [".wav", ".mp3"])) == 0:
+    delLog(
+        timelapse_args.output_directory,
+        "Deleting the empty output directory ",
+        "Deleted the empty output directory ",
+    )
+
+# Recording the ending time just for fun
+total_end = time.perf_counter()
+total_duration = total_end - total_start
+duration_delta = datetime.timedelta(seconds=total_duration)
+logger.info(
+    f"Finished creating timelapse after {total_duration} seconds or {duration_delta}"
+)
 
 # Footer Comment
 # History of Contributions:

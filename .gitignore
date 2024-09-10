@@ -3,6 +3,7 @@ audio/
 video/
 temp/
 output/
+settings/
 wenv/
 
 # Byte-compiled / optimized / DLL files
