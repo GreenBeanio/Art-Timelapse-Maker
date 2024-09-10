@@ -1403,6 +1403,8 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                     )
         # Get file modifications
         while True:
+            # Set bool for errors
+            has_error = False
             # Get the clip in duration
             clip_in = getFloat("How many seconds do you want to clip from the start?\n")
             if clip_in == -1:
@@ -1454,9 +1456,10 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                 clipped_duration = getClipTime(file, clip_in, clip_out, clip_from_end)[
                     "new_duration"
                 ]
-                if not clipped_duration > 0:
+                # Invalid length if the clipped duration is less than 0 or longer than the original
+                if not clipped_duration > 0 or clipped_duration > getLength(file):
                     print("Clipped time is invalid.")
-                    break
+                    has_error = True
             else:
                 clipped_duration = getLength(file)
             # Sped up duration
@@ -1470,8 +1473,14 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                     print(
                         f"Total fade time is longer than the sped up video ({round(sped_duration,2)} seconds)"
                     )
-                    break
-        # Return the use settings
+                    has_error = True
+            if not has_error:
+                break
+            # If there was an error and we didn't break the loop ask again
+            print(
+                f"There was an error: The following questions are about the file {file.name}:"
+            )
+        # Return the user settings if there was no breaks
         return {
             "speed_factor": speed_factor,
             "clip_in": clip_in,
