@@ -55,6 +55,10 @@ class userArguments:
         output_video_fade_out,
         output_audio_fade_in,
         output_audio_fade_out,
+        keep_unfaded_video,
+        keep_unfaded_audio,
+        compression_level,
+        resize,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -87,6 +91,10 @@ class userArguments:
         self.output_video_fade_out = output_video_fade_out
         self.output_audio_fade_in = output_audio_fade_in
         self.output_audio_fade_out = output_audio_fade_out
+        self.keep_unfaded_video = keep_unfaded_video
+        self.keep_unfaded_audio = keep_unfaded_audio
+        self.compression_level = compression_level
+        self.resize = resize
 
 
 # Function to make sure passed paths exist
@@ -167,6 +175,8 @@ def getPaths() -> userArguments:
     clear_output = cli_args.clear_output
     verbose = cli_args.verbose
     prompt = cli_args.prompt
+    keep_unfaded_video = cli_args.keep_unfaded_video
+    keep_unfaded_audio = cli_args.keep_unfaded_audio
 
     # Validating other inputs
     if cli_args.output_fps > 0:
@@ -186,13 +196,11 @@ def getPaths() -> userArguments:
     else:
         logger.critical("Invalid audio speed factor")
         valid_arguments = False
-    ##########
     if cli_args.video_clip_in >= 0:
         video_clip_in = cli_args.video_clip_in
     else:
         logger.critical("Invalid video clip in")
         valid_arguments = False
-    ###
     if cli_args.video_clip_out >= 0:
         video_clip_out = cli_args.video_clip_out
     else:
@@ -248,6 +256,18 @@ def getPaths() -> userArguments:
     else:
         logger.critical("Invalid output audio fade out")
         valid_arguments = False
+    if cli_args.compression_level >= 0 and cli_args.compression_level <= 52:
+        compression_level = cli_args.compression_level
+    else:
+        logger.critical(
+            "Invalid compression level must be an integer (whole number) between 0 and 52, ffmpeg range is 0 to 51 with a default of 23. In this program add 1 to your desired ffmpeg compression level (0 will disable the option)"
+        )
+        valid_arguments = False
+    if cli_args.resize >= 0:
+        resize = cli_args.resize
+    else:
+        logger.critical("Invalid resize")
+        valid_arguments = False
 
     # Close application if inputs aren't valid
     if not valid_arguments:
@@ -287,6 +307,10 @@ def getPaths() -> userArguments:
         output_video_fade_out,
         output_audio_fade_in,
         output_audio_fade_out,
+        keep_unfaded_video,
+        keep_unfaded_audio,
+        compression_level,
+        resize,
     )
 
 
@@ -310,7 +334,11 @@ def concatFile(files: List[pathlib.Path], output: pathlib.Path, utype: str) -> N
     logger.info(f'Creating the {utype} concat file at "{output}"')
     temp_str = ""
     for file in files:
-        temp_str += f"file '{file}'\n"
+        # Replace apostrophes in the file with the escape sequence ffmpeg needs
+        # file_string = str(file.resolve().absolute())
+        file_string = str(file.resolve())
+        file_string = file_string.replace("'", "'\\''")
+        temp_str += f"file '{file_string}'\n"
     with open(output, "w+") as file:
         file.write(temp_str)
     logger.info(f'Created the {utype} concat file at "{output}"')
@@ -370,7 +398,7 @@ def timelapseVideo(
         or (fade_in != 0 or fade_out != 0)
     ):
         # All we need to do is change the codec and the framerate to match the rest of the videos
-        terms = f'ffmpeg -i "{file}"-c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
+        terms = f'ffmpeg -i "{file}" -c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
         # Run ffmpeg
         runFFmpeg(terms)
         # We can skip the rest of the function and save a whopping 3 conditionals.
@@ -572,8 +600,66 @@ def createTimelapses(video_files: list) -> None:
 
 # Function to combine the timelapse videos
 def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> None:
-    terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c copy "{output_file}"'
-    runFFmpeg(terms)
+    # Check if using a fade on the output
+    if (
+        timelapse_args.output_video_fade_in != 0
+        or timelapse_args.output_video_fade_out != 0
+    ):
+        # Temporary path
+        temp_out = pathlib.Path.joinpath(
+            timelapse_args.output_directory, "timelapse_plain.mp4"
+        )
+        logger.info(f'Creating the unfaded output timelapse "{temp_out}"')
+        start = time.perf_counter()
+        # Create the combined timelapse
+        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:v libx265 -r {timelapse_args.output_fps} -an "{temp_out}"'
+        runFFmpeg(terms)
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Created the unfaded output timelapse "{temp_out}" after {duration} seconds'
+        )
+        # Create the fade
+        logger.info(f'Fading the output timelapse "{output_file}"')
+        start = time.perf_counter()
+        # Get durations
+        fade_duration = getFadeTime(
+            temp_out,
+            timelapse_args.output_video_fade_in,
+            timelapse_args.output_video_fade_out,
+        )
+        terms = "ffmpeg "
+        # Add the input file
+        terms += f'-i "{temp_out}" '
+        # Add the fades
+        terms += f'-vf "'
+        # Add the fade in if there is one
+        if fade_duration["fade_in_l"] != 0:
+            terms += f'fade=t=in:st=0:d={fade_duration["fade_in_l"]},'
+        # Add the fade out if there is one
+        if fade_duration["fade_out_l"] != 0:
+            terms += f'fade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}"'
+        # If there isn't a fade out replace the comma with a double quote
+        else:
+            terms = terms[:-1]
+            terms += f'"'
+        # Copy the video codec and remove audio.
+        terms += f' -c:v libx265 -r {timelapse_args.output_fps} -an "{output_file}"'
+        # Run ffmpeg
+        runFFmpeg(terms)
+        # Remove if not getting from source (getting from temporary)
+        if not timelapse_args.keep_unfaded_video:
+            os.remove(temp_out)
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Successfully faded the output timelapse "{output_file}" after {duration} seconds'
+        )
+    # If not using a fade just output it
+    else:
+        # Merge the timelapse files
+        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:v libx265 -r {timelapse_args.output_fps} -an "{output_file}"'
+        runFFmpeg(terms)
 
 
 # Function to create the combined timelapse and log
@@ -841,9 +927,71 @@ def createAudio(audio_files: list) -> None:
 
 # Function to combine the audio
 def combineAudio(concat_file: pathlib.Path, output_file: pathlib.Path) -> None:
-    # Merge the audio files
-    audio_terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:a "{output_file}"'
-    runFFmpeg(audio_terms)
+    # Check if using a fade on the output
+    if (
+        timelapse_args.output_audio_fade_in != 0
+        or timelapse_args.output_audio_fade_out != 0
+    ):
+        # Temporary path
+        temp_out = pathlib.Path.joinpath(
+            timelapse_args.output_directory, "audio_plain.wav"
+        )
+        logger.info(f'Creating the unfaded output audio "{temp_out}"')
+        start = time.perf_counter()
+        # Create the combined file
+        audio_terms = (
+            f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:a mp3 "{temp_out}"'
+        )
+        runFFmpeg(audio_terms)
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Created the unfaded output audio "{temp_out}" after {duration} seconds'
+        )
+        # Create t
+        # Create the fade
+        logger.info(f'Fading the output audio "{output_file}"')
+        start = time.perf_counter()
+        # Get durations
+        fade_duration = getFadeTime(
+            temp_out,
+            timelapse_args.output_audio_fade_in,
+            timelapse_args.output_audio_fade_out,
+        )
+        terms = "ffmpeg "
+        # Add the input file
+        terms += f'-i "{temp_out}" '
+        # Add the fades
+        terms += f'-af "'
+        # Add the fade in if there is one
+        if fade_duration["fade_in_l"] != 0:
+            terms += f'afade=t=in:st=0:d={fade_duration["fade_in_l"]},'
+        # Add the fade out if there is one
+        if fade_duration["fade_out_l"] != 0:
+            terms += f'afade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}"'
+        # If there isn't a fade out replace the comma with a double quote
+        else:
+            terms = terms[:-1]
+            terms += f'"'
+        # Change the audio codec (can't seem to copy it if fading)
+        terms += f' -c:a mp3 "{output_file}"'
+        # Run ffmpeg
+        runFFmpeg(terms)
+        # Remove the temp file if setting isn't enabled
+        if not timelapse_args.keep_unfaded_audio:
+            os.remove(temp_out)
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Successfully faded the output audio "{output_file}" after {duration} seconds'
+        )
+    # If not using a fade just output it
+    else:
+        # Merge the audio files
+        audio_terms = (
+            f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:a mp3 "{output_file}"'
+        )
+        runFFmpeg(audio_terms)
 
 
 # Function to create the combined audio and log
@@ -851,7 +999,7 @@ def logCombineAudio(concat_file: pathlib.Path, output_file: pathlib.Path) -> Non
     # Create the audio for the timelapse
     logger.info(f'Creating the new audio for the timelapse at "{output_file}"')
     start = time.perf_counter()
-    combineTimelapse(concat_file, output_file)
+    combineAudio(concat_file, output_file)
     end = time.perf_counter()
     duration = end - start
     logger.info(
@@ -998,6 +1146,100 @@ def getFloat(question: str) -> float:
             sys.exit()
         except ValueError:
             print("Invalid input. Must be a positive float (decimal).")
+
+
+# Function to add the audio to the timelapse
+def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
+    # Output path
+    video_out_audio = pathlib.Path.joinpath(
+        timelapse_args.output_directory, "timelapse_audio.mp4"
+    )
+    # Check if a output audio already exists
+    if checkPath(video_out_audio):
+        # Delete the existing output video with audio file if that setting is enabled
+        if timelapse_args.override_output:
+            logger.info(
+                f'Deleting existing output video with audio "{video_out_audio}"'
+            )
+            os.remove(video_out_audio)
+            logger.info(f'Deleted existing output video with audio "{video_out_audio}"')
+            # Create the video with audio
+            video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
+            # Create the timelapse
+            logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
+            start = time.perf_counter()
+            # Run the command and wait for it to finish
+            runFFmpeg(video_audio_terms)
+            end = time.perf_counter()
+            duration = end - start
+            logger.info(
+                f'Successfully created the timelapse with audio at "{video_out_audio}" after {duration} seconds'
+            )
+    # If the file doesn't exist (duplicate code :pained_emoji:)
+    else:
+        # Create the video with audio
+        video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
+        # Create the timelapse
+        logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
+        start = time.perf_counter()
+        # Run the command and wait for it to finish
+        runFFmpeg(video_audio_terms)
+        end = time.perf_counter()
+        duration = end - start
+        logger.info(
+            f'Successfully created the timelapse with audio at "{video_out_audio}" after {duration} seconds'
+        )
+
+
+def createModifiedOutput(input_path: pathlib.Path, output_path: pathlib.Path) -> None:
+    # Create the timelapse
+    logger.info(f'Creating the modified timelapse at "{output_path}"')
+    start = time.perf_counter()
+    # Basic terms
+    video_terms = f'ffmpeg -i "{input_path}" '
+    # If we are resizing the video
+    if timelapse_args.resize != 0:
+        video_terms += (
+            f'-vf "scale=iw*{timelapse_args.resize}:ih*{timelapse_args.resize}" '
+        )
+    if timelapse_args.compression_level != 0:
+        video_terms += f"-crf {timelapse_args.compression_level} "
+    # Change the video codec and remove audio.
+    # video_terms += f'-c:v libx265 -r {timelapse_args.output_fps} "{video_out_audio}"'
+    video_terms += f'-c copy "{output_path}"'
+    # Run ffmpeg
+    runFFmpeg(video_terms)
+    # End the log
+    end = time.perf_counter()
+    duration = end - start
+    logger.info(
+        f'Successfully created the modified timelapse at "{output_path}" after {duration} seconds'
+    )
+
+
+# Function to create the modified timelapse (resized and/or compressed)
+def modifyOutput(input_path: pathlib.Path) -> None:
+    # Output path
+    modified_video_out = pathlib.Path.joinpath(
+        timelapse_args.output_directory, "timelapse_modified.mp4"
+    )
+    # Check if a output audio already exists
+    if checkPath(modified_video_out):
+        # Delete the existing output video with audio file if that setting is enabled
+        if timelapse_args.override_output:
+            logger.info(
+                f'Deleting existing modified output timelapse "{modified_video_out}"'
+            )
+            os.remove(modified_video_out)
+            logger.info(
+                f'Deleted existing modified output timelapse "{modified_video_out}"'
+            )
+            # Create the timelapse
+            createModifiedOutput(input_path, modified_video_out)
+    # If the file doesn't exist (duplicate code :pained_emoji:)
+    else:
+        # Create the timelapse
+        createModifiedOutput(input_path, modified_video_out)
 
 
 ###### NEW
@@ -1157,13 +1399,13 @@ parser.add_argument(
     "-ktv",
     "--keep_temp_video",
     help="Doesn't delete the temporary video files if passed",
-    action="store_false",
+    action="store_true",
 )
 parser.add_argument(
     "-kta",
     "--keep_temp_audio",
     help="Doesn't delete the temporary audio files if passed",
-    action="store_false",
+    action="store_true",
 )
 parser.add_argument(
     "-otv",
@@ -1321,13 +1563,23 @@ parser.add_argument(
     type=float,
     default=0,
 )
-
-############# Possible options
+parser.add_argument(
+    "-kuv",
+    "--keep_unfaded_video",
+    help="Keep the unfaded output video",
+    action="store_true",
+)
+parser.add_argument(
+    "-kua",
+    "--keep_unfaded_audio",
+    help="Keep the unfaded output audio",
+    action="store_true",
+)
 parser.add_argument(
     "-cl",
     "--compression_level",
     help="How compressed do you want the output",
-    type=float,
+    type=int,
     default=0,
 )
 parser.add_argument(
@@ -1337,11 +1589,9 @@ parser.add_argument(
     type=float,
     default=0,
 )
-################
-
 
 cli_args = parser.parse_args()
-print(cli_args)  # Temporary print
+# print(cli_args)
 
 # Call the root logger basicConfig
 logging.basicConfig()
@@ -1363,6 +1613,38 @@ if timelapse_args.verbose:
 else:
     logger.setLevel(logging.WARNING)
 
+# If the clear options are enabled clear the directories
+if timelapse_args.clear_output:
+    output_files = getFiles(timelapse_args.output_directory, [".mp4", ".wav"])
+    logger.info(f"Deleting all the existing outputs")
+    for file in output_files:
+        delLog(
+            file,
+            "Deleting the existing output at",
+            "Deleted the existing output at",
+        )
+    logger.info(f"Deleted all the existing outputs")
+if timelapse_args.clear_temp_audio:
+    audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"])
+    logger.info(f"Deleting all the existing temp audio")
+    for file in output_files:
+        delLog(
+            file,
+            "Deleting the existing temp audio at",
+            "Deleted the existing temp audio at",
+        )
+    logger.info(f"Deleted all the existing temp audio")
+if timelapse_args.clear_temp_video:
+    video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
+    logger.info(f"Deleting all the existing temp videos")
+    for file in output_files:
+        delLog(
+            file,
+            "Deleting the existing temp videos at",
+            "Deleted the existing temp videos at",
+        )
+    logger.info(f"Deleted all the existing temp videos")
+
 # Get the files
 video_files = getFiles(timelapse_args.video_directory, [".mp4", ".mkv"])
 audio_files = getFiles(timelapse_args.audio_directory, [".wav", ".mp3"])
@@ -1381,28 +1663,29 @@ for audio in audio_files:
     if audio not in timelapse_video_files and not timelapse_args.override_temp_audio:
         userAnswers[audio] = promptUser(audio, False)
 
-# Check if there are videos in the video directory (((( DO I REALLY CARE? I could still run the audio and video Separate))))
-if len(video_files) == 0:
-    logger.critical("There are no videos in the video file")
-    sys.exit()
-
 # If there are videos
-if len(video_files) == 0:
+if len(video_files) != 0:
     # Create timelapses
     createTimelapses(video_files)
-    # Creating the concat of the timelapse videos
-    createCombinedTimelapse(timelapse_video_files)
 
 # If there is audio
 if len(audio_files) != 0:
     # Create the modified audio
     createAudio(audio_files)
-    # Combine the audio files
-    createCombinedAudio(timelapse_audio_files)
 
 # Create an updated concat list of all the temp files
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
 timelapse_audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"])
+
+# If there are videos
+if len(timelapse_video_files) != 0:
+    # Creating the concat of the timelapse videos
+    createCombinedTimelapse(timelapse_video_files)
+
+# If there is audio
+if len(timelapse_audio_files) != 0:
+    # Combine the audio files
+    createCombinedAudio(timelapse_audio_files)
 
 # Combine the audio and video
 # Get the paths where the files should be
@@ -1410,45 +1693,20 @@ video_out = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp
 audio_out = pathlib.Path.joinpath(timelapse_args.output_directory, "audio.wav")
 # Check if they exist
 if checkPath(video_out) and checkPath(audio_out):
-    # Output path
+    addAudio(video_out, audio_out)
+
+# Create the modified output if using it
+if timelapse_args.resize != 0 or timelapse_args.compression_level != 0:
+    # Get the path where it should be
     video_out_audio = pathlib.Path.joinpath(
         timelapse_args.output_directory, "timelapse_audio.mp4"
     )
-    # Check if a output audio already exists
+    # If the audio timelapse exists use that
     if checkPath(video_out_audio):
-        # Delete the existing output video with audio file if that setting is enabled
-        if timelapse_args.override_output:
-            logger.info(
-                f'Deleting existing output video with audio "{video_out_audio}"'
-            )
-            os.remove(video_out_audio)
-            logger.info(f'Deleted existing output video with audio "{video_out_audio}"')
-            # Create the video with audio
-            vide_audio_terms = f'ffmpeg -i "{video_out}" -i "{audio_out}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
-            # Create the timelapse
-            logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
-            start = time.perf_counter()
-            # Run the command and wait for it to finish
-            runFFmpeg(vide_audio_terms)
-            end = time.perf_counter()
-            duration = end - start
-            logger.info(
-                f'Successfully created the timelapse with audio at "{video_out_audio}" after {duration} seconds'
-            )
-    # If the file doesn't exist (duplicate code :pained_emoji:)
-    else:
-        # Create the video with audio
-        vide_audio_terms = f'ffmpeg -i "{video_out}" -i "{audio_out}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
-        # Create the timelapse
-        logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
-        start = time.perf_counter()
-        # Run the command and wait for it to finish
-        runFFmpeg(vide_audio_terms)
-        end = time.perf_counter()
-        duration = end - start
-        logger.info(
-            f'Successfully created the timelapse with audio at "{video_out_audio}" after {duration} seconds'
-        )
+        modifyOutput(video_out_audio)
+    # If no audio timelapse exists use the main timelapse
+    elif checkPath(video_out):
+        modifyOutput(video_out)
 
 # Footer Comment
 # History of Contributions:
