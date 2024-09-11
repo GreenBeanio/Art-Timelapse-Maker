@@ -7,7 +7,7 @@
 # Author(s): [Garrett Johnson (GreenBeanio) - https://github.com/greenbeanio]
 # Maintainer: [Garrett Johnson (GreenBeanio) - https://github.com/greenbeanio]
 # Project Description: [This project is used to create timelapses from videos.]
-# File Description: [Creates timelapses from videos (specifically for art).]
+# File Description: [Creates timelapses from videos (specifically for art, but can be used for any purpose).]
 
 # Imports
 import os
@@ -1486,7 +1486,7 @@ def loadJson(file: pathlib.Path) -> dict:
                 )
             elif file_type == "audio":
                 new_path = pathlib.Path.joinpath(
-                    timelapse_args.video_directory, path.name
+                    timelapse_args.audio_directory, path.name
                 )
             else:
                 logger.warning(
