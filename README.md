@@ -35,7 +35,7 @@ You need to use video and/or audio files. If only using 1 of the two it will pro
 
 You can also bypass the entire source processing stage and put files directly into the temp folder if all you want to do is combine files. You would do this if you want to combine a collection of video and/or audio, but don't need to modify every file separately. You will still be able to add a fade in and out to the output audio and video doing this option.
 
-You could also bypass the temp processing stage by putting files directly into the output folder. However, would need to name the audio file "audio.wav" and the video file "timelapse.mp4", or if using a file already containing both "timelapse_audio.mp4". You would do this if you only want to resize and/or compress a video. However, you wont be able to add a fade in and out to the video and/or audio this way. [I'm going to add an argument that won't remove the audio from a video just for this use case!]
+You could also bypass the temp processing stage by putting files directly into the output folder. However, would need to name the audio file "audio.wav" and the video file "timelapse.mp4", or if using a file already containing both "timelapse_audio.mp4". You would do this if you only want to resize and/or compress a video. However, you wont be able to add a fade in and out to the video and/or audio this way. If that's your use case put your video file with audio in the temp folder alongside the cli argument to preserve audio.
 
 # Command Line Arguments
 
