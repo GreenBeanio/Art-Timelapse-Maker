@@ -74,6 +74,7 @@ class userArguments:
         randomize_audio,
         randomize_video,
         override_source_path,
+        preserve_audio,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -119,6 +120,7 @@ class userArguments:
         self.randomize_audio = randomize_audio
         self.randomize_video = randomize_video
         self.override_source_path = override_source_path
+        self.preserve_audio = preserve_audio
 
 
 # Function to make sure passed paths exist
@@ -218,6 +220,7 @@ def getPaths() -> userArguments:
     randomize_audio = cli_args.randomize_audio
     randomize_video = cli_args.randomize_video
     override_source_path = cli_args.override_source_path
+    preserve_audio = cli_args.preserve_audio
 
     # Validating other inputs
     if cli_args.output_fps > 0:
@@ -402,6 +405,7 @@ def getPaths() -> userArguments:
         randomize_audio,
         randomize_video,
         override_source_path,
+        preserve_audio,
     )
 
 
@@ -504,7 +508,15 @@ def timelapseVideo(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        terms += f'-c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
+        terms += f"-c:v libx265 -r {timelapse_args.output_fps} "
+        # If we're not preserving the audio
+        if not timelapse_args.preserve_audio:
+            terms += f"-an "
+        # If we are preserving the audio
+        else:
+            terms += f"-c:a mp3 "
+        # Output
+        terms += f'"{final_output}"'
         # Run ffmpeg
         runFFmpeg(terms)
         # We can skip the rest of the function and save a whopping 3 conditionals.
@@ -535,7 +547,18 @@ def timelapseVideo(
             temp_file = f"{file.stem}c{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Copy the video codec and remove audio
-            terms += f"-c:v copy -an "
+            terms += f"-c:v copy "
+            # If we're not preserving the audio
+            if not timelapse_args.preserve_audio:
+                terms += f"-an "
+            # If we are preserving the audio check the speed factor to speed up audio too
+            #  or else it'll just freeze on the last frame
+            elif timelapse_args.speed_factor != 1 and timelapse_args.speed_factor != 0:
+                tempo = generateTempo(timelapse_args.speed_factor)
+                terms += f'-c:a mp3 -af "{tempo}"'
+            # If not using the speed factor either
+            else:
+                terms += f"-c:a mp3 "
             # Add the trim
             if cut_duration["cut_out"] != 0:
                 terms += f'-t {cut_duration["new_duration"]} "{output}"'
@@ -555,7 +578,13 @@ def timelapseVideo(
             # Change the video codec, change the framerate, and remove audio (We need to do this here, but not if
             # another process is being done. This is because we need to do it at some point, but clipping is really
             # fast if we don't change the codec or framerate.)
-            terms += f"-c:v libx265 -r {timelapse_args.output_fps} -an "
+            terms += f"-c:v libx265 -r {timelapse_args.output_fps} "
+            # If we're not preserving the audio
+            if not timelapse_args.preserve_audio:
+                terms += f"-an "
+            # If we are preserving the audio
+            else:
+                terms += f"-c:a mp3 "
             output = final_output
             # Add the trim
             if cut_duration["cut_out"] != 0:
@@ -589,7 +618,15 @@ def timelapseVideo(
             temp_file = f"{file.stem}s{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Remove audio (have to add the codec or it doesn't work, copying it doesn't work)
-            terms += f'-c:v libx265 -an "{output}"'
+            terms += f"-c:v libx265 "
+            # If we're not preserving the audio
+            if not timelapse_args.preserve_audio:
+                terms += f"-an "
+            # If we are preserving the audio
+            else:
+                terms += f"-c:a mp3 "
+            # Output
+            terms += f'"{output}"'
             # Run ffmpeg (duplicate code to save a conditional :pain:)
             runFFmpeg(terms)
             # Remove if not getting from source (getting from temporary)
@@ -606,7 +643,15 @@ def timelapseVideo(
         else:
             output = final_output
             # Remove audio (have to add the codec or it doesn't work, copying it doesn't work)
-            terms += f'-c:v libx265 -r {timelapse_args.output_fps} -an "{output}"'
+            terms += f"-c:v libx265 -r {timelapse_args.output_fps} "
+            # If we're not preserving the audio
+            if not timelapse_args.preserve_audio:
+                terms += f"-an "
+            # If we are preserving the audio
+            else:
+                terms += f"-c:a mp3 "
+            # Output
+            terms += f'"{output}"'
             # Run ffmpeg (duplicate code to save a conditional :pain:)
             runFFmpeg(terms)
             # Remove if not getting from source (getting from temporary)
@@ -643,7 +688,15 @@ def timelapseVideo(
             terms = terms[:-1]
             terms += f'"'
         # Copy the video codec and remove audio.
-        terms += f' -c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
+        terms += f" -c:v libx265 -r {timelapse_args.output_fps} "
+        # If we're not preserving the audio
+        if not timelapse_args.preserve_audio:
+            terms += f"-an "
+        # If we are preserving the audio
+        else:
+            terms += f"-c:a mp3 "
+        # Output
+        terms += f'"{final_output}"'
         # Run ffmpeg
         runFFmpeg(terms)
         # Remove if not getting from source (getting from temporary)
@@ -739,7 +792,15 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        terms += f'-c:v libx265 -r {timelapse_args.output_fps} -an "{temp_out}"'
+        terms += f"-c:v libx265 -r {timelapse_args.output_fps} "
+        # If we're not preserving the audio
+        if not timelapse_args.preserve_audio:
+            terms += f"-an "
+        # If we are preserving the audio
+        else:
+            terms += f"-c:a mp3 "
+        # Output
+        terms += f'"{temp_out}"'
         runFFmpeg(terms)
         end = time.perf_counter()
         duration = end - start
@@ -772,7 +833,15 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
             terms = terms[:-1]
             terms += f'"'
         # Copy the video codec and remove audio.
-        terms += f' -c:v libx265 -r {timelapse_args.output_fps} -an "{output_file}"'
+        terms += f" -c:v libx265 -r {timelapse_args.output_fps} "
+        # If we're not preserving the audio
+        if not timelapse_args.preserve_audio:
+            terms += f"-an "
+        # If we are preserving the audio
+        else:
+            terms += f"-c:a mp3 "
+        # Output
+        terms += f'"{output_file}"'
         # Run ffmpeg
         runFFmpeg(terms)
         # Remove if not getting from source (getting from temporary)
@@ -791,7 +860,15 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        terms += f'-c:v libx265 -r {timelapse_args.output_fps} -an "{output_file}"'
+        terms += f"-c:v libx265 -r {timelapse_args.output_fps} "
+        # If we're not preserving the audio
+        if not timelapse_args.preserve_audio:
+            terms += f"-an "
+        # If we are preserving the audio
+        else:
+            terms += f"-c:a mp3 "
+        # Output
+        terms += f'"{output_file}"'
         runFFmpeg(terms)
 
 
@@ -844,6 +921,51 @@ def createCombinedTimelapse(video_files: list):
         "Deleting the video concat file at",
         "Deleted the video concat file at",
     )
+
+
+# Function to generate audio tempo because it has limits
+def generateTempo(speed: float) -> str:
+    # Base string
+    tempo = ""
+    # Bool based on the speed
+    # If we're making it slower we can't go less that 0.5
+    if speed < 0.5:
+        speed_type = False
+    # If we're making it faster we can use up to 100, but going over 2 skips sounds
+    elif speed > 2:
+        speed_type = True
+    # Variables to store the results
+    new_speed = speed
+    rounds = 0
+    # Getting how many rounds we need to add
+    while True:
+        # Going faster
+        if speed_type:
+            new_speed = new_speed / 2
+            rounds += 1
+            if new_speed <= 2:
+                # main = 2**rounds  # Wait even these are useless besides testing
+                base = 2
+                break
+        # Going slower
+        else:
+            new_speed = new_speed / 0.5
+            rounds += 1
+            if new_speed >= 0.5:
+                # main = 0.5**rounds  # Wait even these are useless besides testing
+                base = 0.5
+                break
+    # Getting the remainder to multiply by (This is actually useless it justs recalculates the new speed value :cry:)
+    # remainder = speed / main
+    # new = main * remainder
+    # Testing the final value (Wait even this is useless outside of testing :cry_again:)
+    # last = main * new_speed
+    # print(last == speed)
+    for x in range(rounds):
+        tempo += f"atempo={base},"
+    # add the final atempo
+    tempo += f"atempo={new_speed}"
+    return tempo
 
 
 # Function to modify an audio file
@@ -961,7 +1083,8 @@ def timelapseAudio(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        terms += f'-af "atempo={timelapse_args.audio_speed_factor}" -c:a mp3 '
+        tempo = generateTempo(timelapse_args.audio_speed_factor)
+        terms += f'-af "{tempo}" -c:a mp3 '
         # Check other possibilities to see what output to use
         if fade_in != 0 or fade_out != 0:
             temp_file = f"{file.stem}s{file.suffix}"
@@ -1935,6 +2058,12 @@ parser.add_argument(
     help=f'Will replace the existing source paths ("video" and "audio") in the settings to the current directory paths. Useful if you\'ve moved the directories and don\'t want to update the settings file manually with prompts.',
     action="store_true",
 )
+parser.add_argument(
+    "-pa",
+    "--preserve_audio",
+    help=f"Wont remove the audio tracks from the videos.",
+    action="store_true",
+)
 
 
 cli_args = parser.parse_args()
@@ -2043,12 +2172,12 @@ if len(audio_files) != 0:
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
 timelapse_audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"])
 
-# If there are videos
+# If there are temp videos
 if len(timelapse_video_files) != 0:
     # Creating the concat of the timelapse videos
     createCombinedTimelapse(timelapse_video_files)
 
-# If there is audio
+# If there is temp audio
 if len(timelapse_audio_files) != 0:
     # Combine the audio files
     createCombinedAudio(timelapse_audio_files)
