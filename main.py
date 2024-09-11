@@ -20,6 +20,7 @@ from typing import List
 import time
 import json
 import datetime
+import random
 
 # Recording the starting time just for fun
 total_start = time.perf_counter()
@@ -69,6 +70,10 @@ class userArguments:
         override_settings,
         clear_settings,
         delete_settings,
+        threads,
+        randomize_audio,
+        randomize_video,
+        override_source_path,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -110,6 +115,10 @@ class userArguments:
         self.override_settings = override_settings
         self.clear_settings = clear_settings
         self.delete_settings = delete_settings
+        self.threads = threads
+        self.randomize_audio = randomize_audio
+        self.randomize_video = randomize_video
+        self.override_source_path = override_source_path
 
 
 # Function to make sure passed paths exist
@@ -206,96 +215,140 @@ def getPaths() -> userArguments:
     override_settings = cli_args.override_settings
     clear_settings = cli_args.clear_settings
     delete_settings = cli_args.delete_settings
+    randomize_audio = cli_args.randomize_audio
+    randomize_video = cli_args.randomize_video
+    override_source_path = cli_args.override_source_path
 
     # Validating other inputs
     if cli_args.output_fps > 0:
         output_fps = cli_args.output_fps
     else:
-        logger.critical("Invalid fps")
+        logger.critical(
+            "Invalid fps: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.speed_factor >= 0:
         speed_factor = cli_args.speed_factor
     else:
-        logger.critical("Invalid speed factor")
+        logger.critical(
+            "Invalid speed factor: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if (
         cli_args.audio_speed_factor >= 0.5 and cli_args.audio_speed_factor <= 100
     ) or cli_args.audio_speed_factor == 0:
         audio_speed_factor = cli_args.audio_speed_factor
     else:
-        logger.critical("Invalid audio speed factor")
+        logger.critical(
+            "Invalid audio speed factor: Must be a float equal to or greater than 0.5 and less than 100, or 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.video_clip_in >= 0:
         video_clip_in = cli_args.video_clip_in
     else:
-        logger.critical("Invalid video clip in")
+        logger.critical(
+            "Invalid video clip in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.video_clip_out >= 0:
         video_clip_out = cli_args.video_clip_out
     else:
-        logger.critical("Invalid video clip out")
+        logger.critical(
+            "Invalid video clip out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.video_fade_in >= 0:
         video_fade_in = cli_args.video_fade_in
     else:
-        logger.critical("Invalid video fade in")
+        logger.critical(
+            "Invalid video fade in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.video_fade_out >= 0:
         video_fade_out = cli_args.video_fade_out
     else:
-        logger.critical("Invalid video fade out")
+        logger.critical(
+            "Invalid video fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.audio_clip_in >= 0:
         audio_clip_in = cli_args.audio_clip_in
     else:
-        logger.critical("Invalid audio clip in")
+        logger.critical(
+            "Invalid audio clip in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.audio_clip_out >= 0:
         audio_clip_out = cli_args.audio_clip_out
     else:
-        logger.critical("Invalid audio clip out")
+        logger.critical(
+            "Invalid audio clip out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.audio_fade_in >= 0:
         audio_fade_in = cli_args.audio_fade_in
     else:
-        logger.critical("Invalid audio fade in")
+        logger.critical(
+            "Invalid audio fade in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.audio_fade_out >= 0:
         audio_fade_out = cli_args.audio_fade_out
     else:
-        logger.critical("Invalid audio fade out")
+        logger.critical(
+            "Invalid audio fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.output_video_fade_in >= 0:
         output_video_fade_in = cli_args.output_video_fade_in
     else:
-        logger.critical("Invalid output video fade in")
+        logger.critical(
+            "Invalid output video fade in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.output_video_fade_out >= 0:
         output_video_fade_out = cli_args.output_video_fade_out
     else:
-        logger.critical("Invalid output video fade out")
+        logger.critical(
+            "Invalid output video fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.output_audio_fade_in >= 0:
         output_audio_fade_in = cli_args.output_audio_fade_in
     else:
-        logger.critical("Invalid output audio fade in")
+        logger.critical(
+            "Invalid output audio fade in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
     if cli_args.output_audio_fade_out >= 0:
         output_audio_fade_out = cli_args.output_audio_fade_out
     else:
-        logger.critical("Invalid output audio fade out")
+        logger.critical(
+            "Invalid output audio fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
         valid_arguments = False
-    if cli_args.compression_level >= 0 and cli_args.compression_level <= 52:
+    if (
+        cli_args.compression_level >= 0 and cli_args.compression_level <= 52
+    ) or cli_args.compression_level == -1:
         compression_level = cli_args.compression_level
     else:
         logger.critical(
-            "Invalid compression level must be an integer (whole number) between 0 and 52, ffmpeg range is 0 to 51 with a default of 23. In this program add 1 to your desired ffmpeg compression level (0 will disable the option)"
+            "Invalid compression: Must be an integer between 0 and 51, ffmpeg range is 0 to 51 with a default of 23 (lower is better quality, 0 is lossless). Passing -1 will disable this option (default)"
         )
         valid_arguments = False
     if cli_args.resize >= 0:
         resize = cli_args.resize
     else:
-        logger.critical("Invalid resize")
+        logger.critical(
+            "Invalid resize: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
+        valid_arguments = False
+    if cli_args.threads >= -1:
+        threads = cli_args.threads
+    else:
+        logger.critical(
+            "Invalid threads: Must be an integer equal to or greater than -1. -1 will disable this option (default), 0 is the optimal amount determined by ffmpeg, and any positive integer is the passed amount of threads."
+        )
         valid_arguments = False
 
     # Close application if inputs aren't valid
@@ -345,6 +398,10 @@ def getPaths() -> userArguments:
         override_settings,
         clear_settings,
         delete_settings,
+        threads,
+        randomize_audio,
+        randomize_video,
+        override_source_path,
     )
 
 
@@ -364,8 +421,18 @@ def getFiles(search_path: pathlib.Path, file_names: List[str]) -> list:
 
 
 # Function to create the concat file for ffmpeg
-def concatFile(files: List[pathlib.Path], output: pathlib.Path, utype: str) -> None:
-    logger.info(f'Creating the {utype} concat file at "{output}"')
+def concatFile(files: List[pathlib.Path], output: pathlib.Path, utype: bool) -> None:
+    # What type of file it is and randomizing if needed
+    if utype:
+        ustr = "video"
+        if timelapse_args.randomize_video:
+            random.shuffle(files)
+    else:
+        ustr = "audio"
+        if timelapse_args.randomize_audio:
+            random.shuffle(files)
+    logger.info(f'Creating the {ustr} concat file at "{output}"')
+    # New list to actually use
     temp_str = ""
     for file in files:
         # Replace apostrophes in the file with the escape sequence ffmpeg needs
@@ -375,7 +442,7 @@ def concatFile(files: List[pathlib.Path], output: pathlib.Path, utype: str) -> N
         temp_str += f"file '{file_string}'\n"
     with open(output, "w+") as file:
         file.write(temp_str)
-    logger.info(f'Created the {utype} concat file at "{output}"')
+    logger.info(f'Created the {ustr} concat file at "{output}"')
 
 
 # Function to use ffprobe to get the length of the file
@@ -432,7 +499,12 @@ def timelapseVideo(
         or (fade_in != 0 or fade_out != 0)
     ):
         # All we need to do is change the codec and the framerate to match the rest of the videos
-        terms = f'ffmpeg -i "{file}" -c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
+        terms = f'ffmpeg -i "{file}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        terms += f'-c:v libx265 -r {timelapse_args.output_fps} -an "{final_output}"'
         # Run ffmpeg
         runFFmpeg(terms)
         # We can skip the rest of the function and save a whopping 3 conditionals.
@@ -453,6 +525,9 @@ def timelapseVideo(
             terms += f'-ss {cut_duration["cut_in"]} '
         # Add the input file
         terms += f'-i "{file}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
         # Check other possibilities to see what output to use
         if (fade_in != 0 or fade_out != 0) or (
             timelapse_args.speed_factor != 1 and timelapse_args.speed_factor != 0
@@ -503,9 +578,12 @@ def timelapseVideo(
         start = time.perf_counter()
         terms = "ffmpeg "
         # Add the input file and speed up factor
-        terms += (
-            f'-i "{current_input}" -vf "setpts={1/timelapse_args.speed_factor}*PTS" '
-        )
+        terms += f'-i "{current_input}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        terms += f'-vf "setpts={1/timelapse_args.speed_factor}*PTS" '
         # Check other possibilities to see what output to use
         if fade_in != 0 or fade_out != 0:
             temp_file = f"{file.stem}s{file.suffix}"
@@ -548,9 +626,10 @@ def timelapseVideo(
         start = time.perf_counter()
         # Get durations
         fade_duration = getFadeTime(current_input, fade_in, fade_out)
-        terms = "ffmpeg "
-        # Add the input file
-        terms += f'-i "{current_input}" '
+        terms = f'ffmpeg -i "{current_input}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
         # Add the fades
         terms += f'-vf "'
         # Add the fade in if there is one
@@ -655,7 +734,12 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
         logger.info(f'Creating the unfaded output timelapse "{temp_out}"')
         start = time.perf_counter()
         # Create the combined timelapse
-        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:v libx265 -r {timelapse_args.output_fps} -an "{temp_out}"'
+        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        terms += f'-c:v libx265 -r {timelapse_args.output_fps} -an "{temp_out}"'
         runFFmpeg(terms)
         end = time.perf_counter()
         duration = end - start
@@ -671,9 +755,10 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
             timelapse_args.output_video_fade_in,
             timelapse_args.output_video_fade_out,
         )
-        terms = "ffmpeg "
-        # Add the input file
-        terms += f'-i "{temp_out}" '
+        terms = f'ffmpeg -i "{temp_out}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
         # Add the fades
         terms += f'-vf "'
         # Add the fade in if there is one
@@ -701,7 +786,12 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
     # If not using a fade just output it
     else:
         # Merge the timelapse files
-        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:v libx265 -r {timelapse_args.output_fps} -an "{output_file}"'
+        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        terms += f'-c:v libx265 -r {timelapse_args.output_fps} -an "{output_file}"'
         runFFmpeg(terms)
 
 
@@ -720,7 +810,7 @@ def logCombineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) ->
 # Function to create the combined video timelapse
 def createCombinedTimelapse(video_files: list):
     concat_video = pathlib.Path.joinpath(timelapse_args.temp_directory, "video.txt")
-    concatFile(video_files, concat_video, "video")
+    concatFile(video_files, concat_video, True)
     # Check if a output timelapse already exists
     output = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp4")
     if checkPath(output):
@@ -780,7 +870,12 @@ def timelapseAudio(
         or (fade_in != 0 or fade_out != 0)
     ):
         # All we need to do is change the codec to match the rest of the audio
-        terms = f'ffmpeg -i "{file}" -c:a mp3 "{final_output}"'
+        terms = f'ffmpeg -i "{file}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        terms += f'-c:a mp3 "{final_output}"'
         # Run ffmpeg
         runFFmpeg(terms)
         # We can skip the rest of the function and save a whopping 2 conditionals.
@@ -805,7 +900,12 @@ def timelapseAudio(
             and timelapse_args.audio_speed_factor != 1
         ):
             # Add the input file (can copy codec on the trim)
-            terms += f'-i "{file}" -c:a copy '
+            terms += f'-i "{file}" '
+            # Add the threads
+            if timelapse_args.threads != -1:
+                terms += f"-threads {timelapse_args.threads} "
+            # Add the rest of the terms
+            terms += f"-c:a copy "
             temp_file = f"{file.stem}c{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Add the trim
@@ -825,7 +925,12 @@ def timelapseAudio(
             first = False
         else:
             # Add the input file (Need to change the codec since it wont be in another step)
-            terms += f'-i "{file}" -c:a mp3 '
+            terms += f'-i "{file}" '
+            # Add the threads
+            if timelapse_args.threads != -1:
+                terms += f"-threads {timelapse_args.threads} "
+            # Add the rest of the terms
+            terms += f"-c:a mp3 "
             output = final_output
             # Add the trim
             if cut_duration["cut_out"] != 0:
@@ -851,7 +956,12 @@ def timelapseAudio(
         start = time.perf_counter()
         terms = "ffmpeg "
         # Add the input file and speed up factor (need to change codec)
-        terms += f'-i "{current_input}" -af "atempo={timelapse_args.audio_speed_factor}" -c:a mp3 '
+        terms += f'-i "{current_input}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        terms += f'-af "atempo={timelapse_args.audio_speed_factor}" -c:a mp3 '
         # Check other possibilities to see what output to use
         if fade_in != 0 or fade_out != 0:
             temp_file = f"{file.stem}s{file.suffix}"
@@ -896,6 +1006,9 @@ def timelapseAudio(
         terms = "ffmpeg "
         # Add the input file
         terms += f'-i "{current_input}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            terms += f"-threads {timelapse_args.threads} "
         # Add the fades
         terms += f'-af "'
         # Add the fade in if there is one
@@ -982,9 +1095,12 @@ def combineAudio(concat_file: pathlib.Path, output_file: pathlib.Path) -> None:
         logger.info(f'Creating the unfaded output audio "{temp_out}"')
         start = time.perf_counter()
         # Create the combined file
-        audio_terms = (
-            f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:a mp3 "{temp_out}"'
-        )
+        audio_terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            audio_terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        audio_terms += f'-c:a mp3 "{temp_out}"'
         runFFmpeg(audio_terms)
         end = time.perf_counter()
         duration = end - start
@@ -1001,25 +1117,28 @@ def combineAudio(concat_file: pathlib.Path, output_file: pathlib.Path) -> None:
             timelapse_args.output_audio_fade_in,
             timelapse_args.output_audio_fade_out,
         )
-        terms = "ffmpeg "
+        audio_terms = "ffmpeg "
         # Add the input file
-        terms += f'-i "{temp_out}" '
+        audio_terms += f'-i "{temp_out}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            audio_terms += f"-threads {timelapse_args.threads} "
         # Add the fades
-        terms += f'-af "'
+        audio_terms += f'-af "'
         # Add the fade in if there is one
         if fade_duration["fade_in_l"] != 0:
-            terms += f'afade=t=in:st=0:d={fade_duration["fade_in_l"]},'
+            audio_terms += f'afade=t=in:st=0:d={fade_duration["fade_in_l"]},'
         # Add the fade out if there is one
         if fade_duration["fade_out_l"] != 0:
-            terms += f'afade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}"'
+            audio_terms += f'afade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}"'
         # If there isn't a fade out replace the comma with a double quote
         else:
-            terms = terms[:-1]
-            terms += f'"'
+            audio_terms = audio_terms[:-1]
+            audio_terms += f'"'
         # Change the audio codec (can't seem to copy it if fading)
-        terms += f' -c:a mp3 "{output_file}"'
+        audio_terms += f' -c:a mp3 "{output_file}"'
         # Run ffmpeg
-        runFFmpeg(terms)
+        runFFmpeg(audio_terms)
         # Remove the temp file if setting isn't enabled
         if not timelapse_args.keep_unfaded_audio:
             os.remove(temp_out)
@@ -1031,9 +1150,12 @@ def combineAudio(concat_file: pathlib.Path, output_file: pathlib.Path) -> None:
     # If not using a fade just output it
     else:
         # Merge the audio files
-        audio_terms = (
-            f'ffmpeg -f concat -safe 0 -i "{concat_file}" -c:a mp3 "{output_file}"'
-        )
+        audio_terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            audio_terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        audio_terms += f'-c:a mp3 "{output_file}"'
         runFFmpeg(audio_terms)
 
 
@@ -1057,7 +1179,7 @@ def createCombinedAudio(audio_files: list):
     # Path for the outputted merged audio
     audio_out = pathlib.Path.joinpath(timelapse_args.output_directory, "audio.wav")
     # Creating the concat file
-    concatFile(audio_files, audio_concat, "audio")
+    concatFile(audio_files, audio_concat, False)
     # Check if a output audio already exists
     if checkPath(audio_out):
         # Delete the existing output audio file if that setting is enabled
@@ -1252,7 +1374,12 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
             os.remove(video_out_audio)
             logger.info(f'Deleted existing output video with audio "{video_out_audio}"')
             # Create the video with audio
-            video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
+            video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" '
+            # Add the threads
+            if timelapse_args.threads != -1:
+                video_audio_terms += f"-threads {timelapse_args.threads} "
+            # Add the rest of the terms
+            video_audio_terms += f'-map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
             # Create the timelapse
             logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
             start = time.perf_counter()
@@ -1266,7 +1393,12 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
     # If the file doesn't exist (duplicate code :pained_emoji:)
     else:
         # Create the video with audio
-        video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" -map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
+        video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" '
+        # Add the threads
+        if timelapse_args.threads != -1:
+            video_audio_terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
+        video_audio_terms += f'-map 0:v:0 -map 1:a:0 -shortest "{video_out_audio}"'
         # Create the timelapse
         logger.info(f'Creating the timelapse with audio at "{video_out_audio}"')
         start = time.perf_counter()
@@ -1285,12 +1417,16 @@ def createModifiedOutput(input_path: pathlib.Path, output_path: pathlib.Path) ->
     start = time.perf_counter()
     # Basic terms
     video_terms = f'ffmpeg -i "{input_path}" '
+    # Add the threads
+    if timelapse_args.threads != -1:
+        video_terms += f"-threads {timelapse_args.threads} "
+        # Add the rest of the terms
     # If we are resizing the video
     if timelapse_args.resize != 0:
         video_terms += (
             f'-vf "scale=iw*{timelapse_args.resize}:ih*{timelapse_args.resize}" '
         )
-    if timelapse_args.compression_level != 0:
+    if timelapse_args.compression_level != -1:
         video_terms += f"-crf {timelapse_args.compression_level} "
     # Change the video codec and remove audio.
     video_terms += f'-c:v libx265 -r {timelapse_args.output_fps} "{output_path}"'
@@ -1335,6 +1471,32 @@ def loadJson(file: pathlib.Path) -> dict:
         data = json.load(json_file)
     # Turn the strings into paths
     new_data = convertFromJson(data)
+    # Replacing the paths if the setting is enabled
+    if timelapse_args.override_source_path:
+        repathed_data = {}
+        for path, settings in new_data.items():
+            # Getting the relative path by basically removing everything before the parent directory
+            source_path = path.relative_to(str(path.parent.parent))
+            # Getting the file type (video or audio)
+            file_type = str(source_path.parent)
+            # Creating the new path
+            if file_type == "video":
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.video_directory, path.name
+                )
+            elif file_type == "audio":
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.video_directory, path.name
+                )
+            else:
+                logger.warning(
+                    f'The file "{path}" in the settings wasn\'t a video or audio file and has been ignored when repathing.'
+                )
+                continue
+            repathed_data[new_path] = settings
+        # Return the repathed data
+        return repathed_data
+    # If we're not replacing the paths just return the loaded data
     return new_data
 
 
@@ -1709,7 +1871,7 @@ parser.add_argument(
     "--compression_level",
     help="How compressed do you want the output",
     type=int,
-    default=0,
+    default=-1,
 )
 parser.add_argument(
     "-rs",
@@ -1748,6 +1910,32 @@ parser.add_argument(
     help="Deletes the settings file if passed",
     action="store_true",
 )
+parser.add_argument(
+    "-th",
+    "--threads",
+    help="How many threads for ffmpeg to use",
+    type=int,
+    default=-1,
+)
+parser.add_argument(
+    "-ra",
+    "--randomize_audio",
+    help="Randomizes the order that audio is combined (to reuse the same audio files for multiple timelapses without it getting old)",
+    action="store_true",
+)
+parser.add_argument(
+    "-rv",
+    "--randomize_video",
+    help="Randomizes the order that video is combined (not sure why you would ever want this, but why not)",
+    action="store_true",
+)
+parser.add_argument(
+    "-osp",
+    "--override_source_path",
+    help=f'Will replace the existing source paths ("video" and "audio") in the settings to the current directory paths. Useful if you\'ve moved the directories and don\'t want to update the settings file manually with prompts.',
+    action="store_true",
+)
+
 
 cli_args = parser.parse_args()
 # print(cli_args)  # Temporary print for testing
@@ -1874,7 +2062,7 @@ if checkPath(video_out) and checkPath(audio_out):
     addAudio(video_out, audio_out)
 
 # Create the modified output if using it
-if timelapse_args.resize != 0 or timelapse_args.compression_level != 0:
+if timelapse_args.resize != 0 or timelapse_args.compression_level != -1:
     # Get the path where it should be
     video_out_audio = pathlib.Path.joinpath(
         timelapse_args.output_directory, "timelapse_audio.mp4"
