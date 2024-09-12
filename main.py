@@ -75,6 +75,10 @@ class userArguments:
         randomize_video,
         override_source_path,
         preserve_audio,
+        modified_output_video_fade_in,
+        modified_output_video_fade_out,
+        modified_output_audio_fade_in,
+        modified_output_audio_fade_out,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -121,6 +125,10 @@ class userArguments:
         self.randomize_video = randomize_video
         self.override_source_path = override_source_path
         self.preserve_audio = preserve_audio
+        self.modified_output_video_fade_in = modified_output_video_fade_in
+        self.modified_output_video_fade_out = modified_output_video_fade_out
+        self.modified_output_audio_fade_in = modified_output_audio_fade_in
+        self.modified_output_audio_fade_out = modified_output_audio_fade_out
 
 
 # Function to make sure passed paths exist
@@ -353,6 +361,34 @@ def getPaths() -> userArguments:
             "Invalid threads: Must be an integer equal to or greater than -1. -1 will disable this option (default), 0 is the optimal amount determined by ffmpeg, and any positive integer is the passed amount of threads."
         )
         valid_arguments = False
+    if cli_args.modified_output_video_fade_in >= 0:
+        modified_output_video_fade_in = cli_args.modified_output_video_fade_in
+    else:
+        logger.critical(
+            "Invalid modified output video fade in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
+        valid_arguments = False
+    if cli_args.modified_output_video_fade_out >= 0:
+        modified_output_video_fade_out = cli_args.modified_output_video_fade_out
+    else:
+        logger.critical(
+            "Invalid modified output video fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
+        valid_arguments = False
+    if cli_args.modified_output_audio_fade_in >= 0:
+        modified_output_audio_fade_in = cli_args.modified_output_audio_fade_in
+    else:
+        logger.critical(
+            "Invalid modified output audio fade in: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
+        valid_arguments = False
+    if cli_args.modified_output_audio_fade_out >= 0:
+        modified_output_audio_fade_out = cli_args.modified_output_audio_fade_out
+    else:
+        logger.critical(
+            "Invalid modified output audio fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
+        valid_arguments = False
 
     # Close application if inputs aren't valid
     if not valid_arguments:
@@ -406,6 +442,10 @@ def getPaths() -> userArguments:
         randomize_video,
         override_source_path,
         preserve_audio,
+        modified_output_video_fade_in,
+        modified_output_video_fade_out,
+        modified_output_audio_fade_in,
+        modified_output_audio_fade_out,
     )
 
 
@@ -485,6 +525,7 @@ def runFFmpeg(terms: str) -> None:
 # Function to create a timelapse from a video
 def timelapseVideo(
     file: pathlib.Path,
+    speed_factor: float,
     cut_in: float,
     cut_out: float,
     cut_from_end: bool,
@@ -499,7 +540,7 @@ def timelapseVideo(
     # Check if the file needs no modification
     if not (
         (cut_in != 0 or cut_out != 0)
-        or (timelapse_args.speed_factor != 0 and timelapse_args.speed_factor != 1)
+        or (speed_factor != 0 and speed_factor != 1)
         or (fade_in != 0 or fade_out != 0)
     ):
         # All we need to do is change the codec and the framerate to match the rest of the videos
@@ -541,9 +582,7 @@ def timelapseVideo(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Check other possibilities to see what output to use
-        if (fade_in != 0 or fade_out != 0) or (
-            timelapse_args.speed_factor != 1 and timelapse_args.speed_factor != 0
-        ):
+        if (fade_in != 0 or fade_out != 0) or (speed_factor != 1 and speed_factor != 0):
             temp_file = f"{file.stem}c{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Copy the video codec and remove audio
@@ -553,8 +592,8 @@ def timelapseVideo(
                 terms += f"-an "
             # If we are preserving the audio check the speed factor to speed up audio too
             #  or else it'll just freeze on the last frame
-            elif timelapse_args.speed_factor != 1 and timelapse_args.speed_factor != 0:
-                tempo = generateTempo(timelapse_args.speed_factor)
+            elif speed_factor != 1 and speed_factor != 0:
+                tempo = generateTempo(speed_factor)
                 terms += f'-c:a mp3 -af "{tempo}"'
             # If not using the speed factor either
             else:
@@ -602,7 +641,7 @@ def timelapseVideo(
             return
 
     # FFmpeg speed up the video
-    if timelapse_args.speed_factor != 0 and timelapse_args.speed_factor != 1:
+    if speed_factor != 0 and speed_factor != 1:
         logger.info(f'Speeding up the temp timelapse of "{file}"')
         start = time.perf_counter()
         terms = "ffmpeg "
@@ -612,7 +651,7 @@ def timelapseVideo(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        terms += f'-vf "setpts={1/timelapse_args.speed_factor}*PTS" '
+        terms += f'-vf "setpts={1/speed_factor}*PTS" '
         # Check other possibilities to see what output to use
         if fade_in != 0 or fade_out != 0:
             temp_file = f"{file.stem}s{file.suffix}"
@@ -717,6 +756,7 @@ def logTimelapses(video: pathlib.Path, output: pathlib.Path) -> None:
     start = time.perf_counter()
     timelapseVideo(
         video,
+        userAnswers[video]["speed_factor"],
         userAnswers[video]["clip_in"],
         userAnswers[video]["clip_out"],
         userAnswers[video]["clip_from_end"],
@@ -971,6 +1011,7 @@ def generateTempo(speed: float) -> str:
 # Function to modify an audio file
 def timelapseAudio(
     file: pathlib.Path,
+    speed_factor: float,
     cut_in: float,
     cut_out: float,
     cut_from_end: bool,
@@ -985,10 +1026,7 @@ def timelapseAudio(
     # Check if the file needs no modification
     if not (
         (cut_in != 0 or cut_out != 0)
-        or (
-            timelapse_args.audio_speed_factor != 0
-            and timelapse_args.audio_speed_factor != 1
-        )
+        or (speed_factor != 0 and speed_factor != 1)
         or (fade_in != 0 or fade_out != 0)
     ):
         # All we need to do is change the codec to match the rest of the audio
@@ -1017,10 +1055,7 @@ def timelapseAudio(
         if cut_duration["cut_in"] != 0:
             terms += f'-ss {cut_duration["cut_in"]} '
         # Check other possibilities to see what output to use
-        if (fade_in != 0 or fade_out != 0) or (
-            timelapse_args.audio_speed_factor != 0
-            and timelapse_args.audio_speed_factor != 1
-        ):
+        if (fade_in != 0 or fade_out != 0) or (speed_factor != 0 and speed_factor != 1):
             # Add the input file (can copy codec on the trim)
             terms += f'-i "{file}" '
             # Add the threads
@@ -1070,10 +1105,7 @@ def timelapseAudio(
             return
 
     # FFmpeg speed up the audio
-    if (
-        timelapse_args.audio_speed_factor != 0
-        and timelapse_args.audio_speed_factor != 1
-    ):
+    if speed_factor != 0 and speed_factor != 1:
         logger.info(f'Speeding up the temp audio of "{file}"')
         start = time.perf_counter()
         terms = "ffmpeg "
@@ -1083,7 +1115,7 @@ def timelapseAudio(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        tempo = generateTempo(timelapse_args.audio_speed_factor)
+        tempo = generateTempo(speed_factor)
         terms += f'-af "{tempo}" -c:a mp3 '
         # Check other possibilities to see what output to use
         if fade_in != 0 or fade_out != 0:
@@ -1166,6 +1198,7 @@ def logAudio(audio: pathlib.Path, output: pathlib.Path) -> None:
     start = time.perf_counter()
     timelapseAudio(
         audio,
+        userAnswers[audio]["speed_factor"],
         userAnswers[audio]["clip_in"],
         userAnswers[audio]["clip_out"],
         userAnswers[audio]["clip_from_end"],
@@ -1534,7 +1567,9 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
         )
 
 
-def createModifiedOutput(input_path: pathlib.Path, output_path: pathlib.Path) -> None:
+def createModifiedOutput(
+    input_path: pathlib.Path, output_path: pathlib.Path, file_type: bool
+) -> None:
     # Create the timelapse
     logger.info(f'Creating the modified timelapse at "{output_path}"')
     start = time.perf_counter()
@@ -1551,8 +1586,62 @@ def createModifiedOutput(input_path: pathlib.Path, output_path: pathlib.Path) ->
         )
     if timelapse_args.compression_level != -1:
         video_terms += f"-crf {timelapse_args.compression_level} "
-    # Change the video codec and remove audio.
-    video_terms += f'-c:v libx265 -r {timelapse_args.output_fps} "{output_path}"'
+    # Check if we're applying any video fade
+    if (
+        timelapse_args.modified_output_video_fade_in != 0
+        or timelapse_args.modified_output_video_fade_out != 0
+    ):
+        # Get the fades
+        video_fade_duration = getFadeTime(
+            input_path,
+            timelapse_args.modified_output_video_fade_in,
+            timelapse_args.modified_output_video_fade_out,
+        )
+        # Add the fades
+        terms += f'-vf "'
+        # Add the fade in if there is one
+        if video_fade_duration["fade_in_l"] != 0:
+            terms += f'fade=t=in:st=0:d={video_fade_duration["fade_in_l"]},'
+        # Add the fade out if there is one
+        if video_fade_duration["fade_out_l"] != 0:
+            terms += f'fade=t=out:st={video_fade_duration["fade_out_s"]}:d={video_fade_duration["fade_out_l"]}" '
+        # If there isn't a fade out replace the comma with a double quote
+        else:
+            terms = terms[:-1]
+            terms += f'" '
+    # Check if we're applying any audio fade (and will have audio in the modified output)
+    if (
+        timelapse_args.modified_output_video_fade_in != 0
+        or timelapse_args.modified_output_video_fade_out != 0
+    ) and (not file_type or timelapse_args.preserve_audio):
+        # Get the fades
+        audio_fade_duration = getFadeTime(
+            input_path,
+            timelapse_args.modified_output_audio_fade_in,
+            timelapse_args.modified_output_audio_fade_out,
+        )
+        # Add the fades
+        terms += f'-af "'
+        # Add the fade in if there is one
+        if audio_fade_duration["fade_in_l"] != 0:
+            terms += f'afade=t=in:st=0:d={audio_fade_duration["fade_in_l"]},'
+        # Add the fade out if there is one
+        if audio_fade_duration["fade_out_l"] != 0:
+            terms += f'afade=t=out:st={audio_fade_duration["fade_out_s"]}:d={audio_fade_duration["fade_out_l"]}" '
+        # If there isn't a fade out replace the comma with a double quote
+        else:
+            terms = terms[:-1]
+            terms += f'" '
+    # Change the video codec
+    video_terms += f"-c:v libx265 "
+    # If it's a timelapse with audio, or we're preserving audio change the audio codec
+    if not file_type or timelapse_args.preserve_audio:
+        video_terms += f"-c:a mp3 "
+    # If it's just video remove the audio
+    else:
+        video_terms += f"-an "
+    # Add the rest of the terms
+    video_terms += f'-r {timelapse_args.output_fps} "{output_path}"'
     # Run ffmpeg
     runFFmpeg(video_terms)
     # End the log
@@ -1564,7 +1653,7 @@ def createModifiedOutput(input_path: pathlib.Path, output_path: pathlib.Path) ->
 
 
 # Function to create the modified timelapse (resized and/or compressed)
-def modifyOutput(input_path: pathlib.Path) -> None:
+def modifyOutput(input_path: pathlib.Path, file_type: bool) -> None:
     # Output path
     modified_video_out = pathlib.Path.joinpath(
         timelapse_args.output_directory, "timelapse_modified.mp4"
@@ -1581,11 +1670,11 @@ def modifyOutput(input_path: pathlib.Path) -> None:
                 f'Deleted existing modified output timelapse "{modified_video_out}"'
             )
             # Create the timelapse
-            createModifiedOutput(input_path, modified_video_out)
+            createModifiedOutput(input_path, modified_video_out, file_type)
     # If the file doesn't exist (duplicate code :pained_emoji:)
     else:
         # Create the timelapse
-        createModifiedOutput(input_path, modified_video_out)
+        createModifiedOutput(input_path, modified_video_out, file_type)
 
 
 # Function to read json of the userSetting
@@ -2064,7 +2153,34 @@ parser.add_argument(
     help=f"Wont remove the audio tracks from the videos.",
     action="store_true",
 )
-
+parser.add_argument(
+    "-movfi",
+    "--modified_output_video_fade_in",
+    help="How many seconds you want fade in to the modified output video",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-movfo",
+    "--modified_output_video_fade_out",
+    help="How many seconds you want fade out of the modified output video",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-moafi",
+    "--modified_output_audio_fade_in",
+    help="How many seconds you want fade in to the modified output audio",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-moafo",
+    "--modified_output_audio_fade_out",
+    help="How many seconds you want fade out of the modified output audio",
+    type=float,
+    default=0,
+)
 
 cli_args = parser.parse_args()
 # print(cli_args)  # Temporary print for testing
@@ -2197,10 +2313,10 @@ if timelapse_args.resize != 0 or timelapse_args.compression_level != -1:
         timelapse_args.output_directory, "timelapse_audio.mp4"
     )
     # If the audio timelapse exists use that
-    if checkPath(video_out_audio):
+    if checkPath(video_out_audio, True):
         modifyOutput(video_out_audio)
     # If no audio timelapse exists use the main timelapse
-    elif checkPath(video_out):
+    elif checkPath(video_out, False):
         modifyOutput(video_out)
 
 
