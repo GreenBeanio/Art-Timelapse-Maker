@@ -571,7 +571,7 @@ def timelapseVideo(
         logger.info(f'Clipping the temp timelapse of "{file}"')
         start = time.perf_counter()
         # Get durations
-        cut_duration = getClipTime(current_input, cut_in, cut_out, cut_from_end)
+        cut_duration = getClipTime(current_input, cut_in, cut_out, cut_from_end, False)
         terms = "ffmpeg "
         # Add the beginning cut
         if cut_duration["cut_in"] != 0:
@@ -1049,7 +1049,7 @@ def timelapseAudio(
         logger.info(f'Clipping the temp audio of "{file}"')
         start = time.perf_counter()
         # Get durations
-        cut_duration = getClipTime(current_input, cut_in, cut_out, cut_from_end)
+        cut_duration = getClipTime(current_input, cut_in, cut_out, cut_from_end, False)
         terms = "ffmpeg "
         # Add the beginning cut
         if cut_duration["cut_in"] != 0:
@@ -1372,7 +1372,11 @@ def createCombinedAudio(audio_files: list):
 
 # Function to get the cut times
 def getClipTime(
-    file: pathlib.Path, cut_in: float, cut_out: float, cut_out_from_end: bool
+    file: pathlib.Path,
+    cut_in: float,
+    cut_out: float,
+    cut_out_from_end: bool,
+    prompted: bool,
 ) -> dict:
     # Get the length of the file
     duration = getLength(file)
@@ -1383,8 +1387,94 @@ def getClipTime(
     # If we are passing in the actual time to clip at
     else:
         new_duration = cut_out
-    # Get the fade times
-    return {"cut_in": cut_in, "cut_out": new_duration, "new_duration": new_duration}
+    # Getting the new length after both buts
+    new_length = new_duration - cut_in
+    # Run a test if this is being called without prompt and attempt to create valid cuts,
+    # if this is being ran by a prompt the prompt already wont accept the failed results
+    # Checking to make sure the cuts aren't longer than the video
+    if not prompted:
+        # If the clip is less than 0 (not more than because I don't want it equal to 0 either) or somehow got longer there's a problem
+        if not new_length > 0 or new_length > duration:
+            # I'm going to choose to prioritize the cut in over the cut out
+            # I'm prioritizing the cut in because in my own uses there's always a delay after starting the timelapse, but
+            # many of my videos end because the camera ran out of file size per video or the camera died.
+            # Check if just the cut in is valid
+            if duration - cut_in > 0:
+                # Check if the remaining duration is more than 1 second
+                if duration - cut_in > 1:
+                    # If it is we cut out everything except for 1 second
+                    remaining_time = duration - cut_in - 1
+                    logger.warning(
+                        f'Cut at "{file}" was problematic. The remaining length will be 1 second with the cut in preserved, but the cut out was modified to leave 1 second remaining.'
+                    )
+                    return {
+                        "cut_in": cut_in,
+                        "cut_out": remaining_time,
+                        "new_duration": (duration - remaining_time),
+                        "output_length": 1,
+                    }
+                # If it's not we just return the cut in
+                else:
+                    logger.warning(
+                        f'Cut at "{file}" was problematic. The remaining length will be {duration - cut_in} seconds with the cut in preserved, but the cut out was discarded.'
+                    )
+                    return {
+                        "cut_in": cut_in,
+                        "cut_out": 0,
+                        "new_duration": duration,
+                        "output_length": duration - cut_in,
+                    }
+            # Check if just the cut out is valid
+            elif (duration - new_duration) > 0 and new_duration < duration:
+                # If it's more than 1
+                if (duration - new_duration) > 1:
+                    # If it is we cut out everything except for 1 second
+                    remaining_time = (duration - new_duration) - 1
+                    logger.warning(
+                        f'Cut at "{file}" was problematic. The remaining length will be 1 second with the cut out preserved, but the cut in was modified to leave 1 second remaining.'
+                    )
+                    return {
+                        "cut_in": remaining_time,
+                        "cut_out": cut_out,
+                        "new_duration": new_duration,
+                        "output_length": 1,
+                    }
+                # If it's not we just return the cut out
+                else:
+                    logger.warning(
+                        f'Cut at "{file}" was problematic. The remaining length will be {duration - new_duration} seconds with the cut out preserved, but the cut in was discarded.'
+                    )
+                    return {
+                        "cut_in": 0,
+                        "cut_out": cut_out,
+                        "new_duration": new_duration,
+                        "output_length": duration - new_duration,
+                    }
+            # If both are invalid we ignore the clips and return a value for no clips
+            else:
+                return {
+                    "cut_in": 0,
+                    "cut_out": 0,
+                    "new_duration": duration,
+                    "output_length": duration,
+                }
+        # If clip is good
+        else:
+            # Get the cut times
+            return {
+                "cut_in": cut_in,
+                "cut_out": cut_out,
+                "new_duration": new_duration,
+                "output_length": new_length,
+            }
+    else:
+        # Get the cut times
+        return {
+            "cut_in": cut_in,
+            "cut_out": cut_out,
+            "new_duration": new_duration,
+            "output_length": new_length,
+        }
 
 
 # Function to get the fade times
@@ -1397,11 +1487,27 @@ def getFadeTime(
     duration = getLength(file)
     # Get the fade times
     fade_out_s = duration - fade_out_l
-    return {
-        "fade_in_l": fade_in_l,
-        "fade_out_l": fade_out_l,
-        "fade_out_s": fade_out_s,
-    }
+    # Checking to make sure the fades aren't longer than the video
+    # Unlike getClipTime() this will always be ran without user input
+    if not (fade_in_l + fade_out_l) > duration:
+        logger.warning(
+            f'Total fade time given for file "{file}" is longer than the file. Both fades have been made to half the file\'s duration.)'
+        )
+        # In the even the given fade times are larger than the duration we just fade the entire video
+        duration_2 = duration / 2
+        return {
+            "fade_in_l": duration_2,
+            "fade_out_l": duration_2,
+            "fade_out_s": (
+                duration - duration_2
+            ),  # Just in case of rounding errors or other such silliness
+        }
+    else:
+        return {
+            "fade_in_l": fade_in_l,
+            "fade_out_l": fade_out_l,
+            "fade_out_s": fade_out_s,
+        }
 
 
 # Function to return the default dictionary (from cli arguments)
@@ -1827,9 +1933,9 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
             # Validate the options given
             # Clip
             if clip_in != 0 or clip_out != 0:
-                clipped_duration = getClipTime(file, clip_in, clip_out, clip_from_end)[
-                    "new_duration"
-                ]
+                clipped_duration = getClipTime(
+                    file, clip_in, clip_out, clip_from_end, True
+                )["new_length"]
                 # Invalid length if the clipped duration is less than 0 or longer than the original
                 if not clipped_duration > 0 or clipped_duration > getLength(file):
                     print("Clipped time is invalid.")
