@@ -16,7 +16,7 @@ import subprocess
 import sys
 import argparse
 import logging
-from typing import List
+from typing import List, Tuple
 import time
 import json
 import datetime
@@ -81,6 +81,8 @@ class userArguments:
         modified_output_audio_fade_out,
         image_length,
         dont_save_settings,
+        width,
+        height,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -133,6 +135,8 @@ class userArguments:
         self.modified_output_audio_fade_out = modified_output_audio_fade_out
         self.image_length = image_length
         self.dont_save_settings = dont_save_settings
+        self.width = width
+        self.height = height
 
 
 # Function to make sure passed paths exist
@@ -400,6 +404,16 @@ def getPaths() -> userArguments:
         logger.critical(
             f"Invalid image length: Default image length must be larger than 1 output frame length ({1/cli_args.output_fps} seconds at the output fps)"
         )
+    if cli_args.width > 0:
+        width = cli_args.width
+    else:
+        logger.critical("Invalid width: Must be an integer greater than 0.")
+        valid_arguments = False
+    if cli_args.height > 0:
+        height = cli_args.height
+    else:
+        logger.critical("Invalid height: Must be an integer greater than 0.")
+        valid_arguments = False
 
     # Close application if inputs aren't valid
     if not valid_arguments:
@@ -459,6 +473,8 @@ def getPaths() -> userArguments:
         modified_output_audio_fade_out,
         image_length,
         dont_save_settings,
+        width,
+        height,
     )
 
 
@@ -513,6 +529,19 @@ def getLength(file: pathlib.Path) -> float:
     return float(duration)
 
 
+# Function to use ffprobe to get the resolution of a file
+def getResolution(file: pathlib.Path) -> Tuple[int, int]:
+    terms = f'ffprobe -v error -select_streams v -show_entries stream=width,height -of csv=p=0:s=x "{file}"'
+    ffprobe = subprocess.Popen(
+        terms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    # Run the command and get the result
+    resolution, err = ffprobe.communicate()
+    resolution = resolution.split("x")
+    resolution[1] = resolution[1].strip("\n")
+    return (int(resolution[0]), int(resolution[1]))
+
+
 # Function to get the framerate of the file
 def getFramerate(file: pathlib.Path) -> float:
     terms = f'ffprobe -v error -select_streams v -of default=noprint_wrappers=1:nokey=1 -show_entries stream=r_frame_rate "{file}"'
@@ -562,7 +591,7 @@ def timelapseVideo(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        terms += f"-c:v libx265 -r {timelapse_args.output_fps} "
+        terms += f'-vf "{resize_vf}" -c:v libx265 -r {timelapse_args.output_fps} '
         # If we're not preserving the audio
         if not timelapse_args.preserve_audio:
             terms += f"-an "
@@ -590,7 +619,7 @@ def timelapseVideo(
         if cut_duration["cut_in"] != 0:
             terms += f'-ss {cut_duration["cut_in"]} '
         # Add the input file
-        terms += f'-i "{file}" '
+        terms += f'-i "{file}" -vf "{resize_vf}" '
         # Add the threads
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
@@ -599,7 +628,8 @@ def timelapseVideo(
             temp_file = f"{file.stem}c{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Copy the video codec and remove audio
-            terms += f"-c:v copy "
+            # terms += f"-c:v copy "  # Not sure if copy will still work if resizing will need to test
+            terms += f"-c:v libx265 "  # I couldn't copy it anymore ... oh well
             # If we're not preserving the audio
             if not timelapse_args.preserve_audio:
                 terms += f"-an "
@@ -664,7 +694,7 @@ def timelapseVideo(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the rest of the terms
-        terms += f'-vf "setpts={1/speed_factor}*PTS" '
+        terms += f'-vf "{resize_vf},setpts={1/speed_factor}*PTS" '
         # Check other possibilities to see what output to use
         if fade_in != 0 or fade_out != 0:
             temp_file = f"{file.stem}s{file.suffix}"
@@ -728,7 +758,7 @@ def timelapseVideo(
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the fades
-        terms += f'-vf "'
+        terms += f'-vf "{resize_vf},'
         # Add the fade in if there is one
         if fade_duration["fade_in_l"] != 0:
             terms += f'fade=t=in:st=0:d={fade_duration["fade_in_l"]},'
@@ -874,7 +904,7 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
         # Add the fades
-        terms += f'-vf "'
+        terms += f'-vf "{resize_vf},'
         # Add the fade in if there is one
         if fade_duration["fade_in_l"] != 0:
             terms += f'fade=t=in:st=0:d={fade_duration["fade_in_l"]},'
@@ -908,7 +938,7 @@ def combineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) -> No
     # If not using a fade just output it
     else:
         # Merge the timelapse files
-        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" '
+        terms = f'ffmpeg -f concat -safe 0 -i "{concat_file}" -vf "{resize_vf}" '
         # Add the threads
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
@@ -1688,7 +1718,9 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
             os.remove(video_out_audio)
             logger.info(f'Deleted existing output video with audio "{video_out_audio}"')
             # Create the video with audio
-            video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" '
+            video_audio_terms = (
+                f'ffmpeg -i "{video_path}" -i "{audio_path}" -vf "{resize_vf}" '
+            )
             # Add the threads
             if timelapse_args.threads != -1:
                 video_audio_terms += f"-threads {timelapse_args.threads} "
@@ -1707,7 +1739,9 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
     # If the file doesn't exist (duplicate code :pained_emoji:)
     else:
         # Create the video with audio
-        video_audio_terms = f'ffmpeg -i "{video_path}" -i "{audio_path}" '
+        video_audio_terms = (
+            f'ffmpeg -i "{video_path}" -i "{audio_path}" -vf "{resize_vf}" '
+        )
         # Add the threads
         if timelapse_args.threads != -1:
             video_audio_terms += f"-threads {timelapse_args.threads} "
@@ -2067,6 +2101,17 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
 def ImageVideo(
     file: pathlib.Path, image_video: pathlib.Path, image_video_out: pathlib.Path
 ) -> None:
+    # Creating a scaled version of the image
+    start = time.perf_counter()
+    resized_image = pathlib.Path.joinpath(
+        timelapse_args.temp_directory, f"{file.stem}_r.{file.suffix}"
+    )
+    logger.info(f'Resizing the image "{file}" at "{resized_image}"')
+    resize_terms = f'ffmpeg -i "{file}" -vf "{resize_vf}" "{resized_image}"'
+    runFFmpeg(resize_terms)
+    end = time.perf_counter()
+    duration = end - start
+    logger.info(f'Created the resized image "{resized_image}" after {duration} seconds')
     # Creating the concat file
     concat_image = pathlib.Path.joinpath(timelapse_args.temp_directory, "image.txt")
     logger.info(f'Creating the image concat file at "{concat_image}"')
@@ -2076,7 +2121,7 @@ def ImageVideo(
     )
     # Replace apostrophes in the file with the escape sequence ffmpeg needs
     # file_string = str(file.resolve().absolute())
-    file_string = str(file.resolve())
+    file_string = str(resized_image.resolve())
     file_string = file_string.replace("'", "'\\''")
     # New str to actually use
     temp_str = ""
@@ -2091,11 +2136,22 @@ def ImageVideo(
     start = time.perf_counter()
     logger.info(f'Creating the video "{image_video}" from the image "{file}"')
     # Have to scale the image for this to work ... should probably actualyl scale all the videos to a desired resolution just in case they're not all the same resolution for some reason ... even though they should be
-    image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf "settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB,pad=ceil(iw/2)*2:ceil(ih/2)*2" -r {timelapse_args.output_fps} -c:v libx265 "{image_video}"'
+    image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf "settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB,{resize_vf}"'  # Maybe don't need to resize again
     runFFmpeg(image_terms)
     end = time.perf_counter()
     duration = end - start
     logger.info(f'Created the video "{image_video}" after {duration} seconds')
+    # Deleting the resized image and concat file
+    delLog(
+        resized_image,
+        "Deleting the temporary resized image",
+        "Deleted the temporary resized image",
+    )
+    delLog(
+        concat_image,
+        "Deleting the temporary image concat file",
+        "Deleted the temporary image concat file",
+    )
     # Treat it like a regular video (without the speed factor as you should have put in the length you wanted it to be already)
     # Create the new timelapse
     start = time.perf_counter()
@@ -2492,6 +2548,12 @@ parser.add_argument(
     help="Doesn't save the settings if passed",
     action="store_false",
 )
+parser.add_argument(
+    "-wi", "--width", help="The desired output width", type=int, default=1920
+)
+parser.add_argument(
+    "-he", "--height", help="The desired output height", type=int, default=1080
+)
 
 # Get the command line arguments
 cli_args = parser.parse_args()
@@ -2516,6 +2578,9 @@ if timelapse_args.verbose:
     logger.setLevel(logging.INFO)
 else:
     logger.setLevel(logging.WARNING)
+
+# Variable to store the resize command that will be used many times
+resize_vf = f"scale={timelapse_args.width}:{timelapse_args.height}:force_original_aspect_ratio=1,pad={timelapse_args.width}:{timelapse_args.height}:(( (ow - iw)/2 )):(( (oh - ih)/2 ))"
 
 # If the clear options are enabled clear the directories
 if timelapse_args.clear_output:
@@ -2633,11 +2698,11 @@ if timelapse_args.resize != 0 or timelapse_args.compression_level != -1:
         timelapse_args.output_directory, "timelapse_audio.mp4"
     )
     # If the audio timelapse exists use that
-    if checkPath(video_out_audio, True):
-        modifyOutput(video_out_audio)
+    if checkPath(video_out_audio):
+        modifyOutput(video_out_audio, True)
     # If no audio timelapse exists use the main timelapse
-    elif checkPath(video_out, False):
-        modifyOutput(video_out)
+    elif checkPath(video_out):
+        modifyOutput(video_out, False)
 
 
 # Deleting unwanted files/directories
