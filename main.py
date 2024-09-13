@@ -2156,7 +2156,8 @@ def ImageVideo(
     start = time.perf_counter()
     logger.info(f'Creating the video "{image_video}" from the image "{file}"')
     # Have to scale the image for this to work ... should probably actualyl scale all the videos to a desired resolution just in case they're not all the same resolution for some reason ... even though they should be
-    image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf "settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB,{resize_vf}" "{image_video}"'  # Maybe don't need to resize again
+    # image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf "settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB,{resize_vf}" "{image_video}"'  # Maybe don't need to resize again
+    image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf "settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB" "{image_video}"'
     runFFmpeg(image_terms)
     end = time.perf_counter()
     duration = end - start
@@ -2218,8 +2219,8 @@ def createImage(image_files: list) -> None:
     for image in image_files:
         # Check if a version of it already exists
         image_video = pathlib.Path.joinpath(
-            timelapse_args.temp_directory, f"{image.stem}_t.mp4"
-        )
+            timelapse_args.audio_directory, f"{image.stem}.mp4"
+        )  # I don't really like that I'm making a temporary file in the source files, but it is what it is. I'll make it in the audio directory instead so you can tell if it shouldn't be there.
         image_video_out = pathlib.Path.joinpath(
             timelapse_args.temp_directory, f"{image.stem}.mp4"
         )
