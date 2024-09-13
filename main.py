@@ -619,7 +619,17 @@ def timelapseVideo(
         if cut_duration["cut_in"] != 0:
             terms += f'-ss {cut_duration["cut_in"]} '
         # Add the input file
-        terms += f'-i "{file}" -vf "{resize_vf}" '
+        terms += f'-i "{file}" '
+        # Compare the resolutions
+        c_resolution = getResolution(file)
+        if (
+            c_resolution[0] != timelapse_args.width
+            or c_resolution[1] != timelapse_args.height
+        ):
+            match_resolution = False
+            terms += f'-vf "{resize_vf}" '
+        else:
+            match_resolution = True
         # Add the threads
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
@@ -628,8 +638,10 @@ def timelapseVideo(
             temp_file = f"{file.stem}c{file.suffix}"
             output = pathlib.Path.joinpath(timelapse_args.temp_directory, temp_file)
             # Copy the video codec and remove audio
-            # terms += f"-c:v copy "  # Not sure if copy will still work if resizing will need to test
-            terms += f"-c:v libx265 "  # I couldn't copy it anymore ... oh well
+            if match_resolution:
+                terms += f"-c:v copy "  # Not sure if copy will still work if resizing will need to test
+            else:
+                terms += f"-c:v libx265 "  # I couldn't copy it anymore ... oh well
             # If we're not preserving the audio
             if not timelapse_args.preserve_audio:
                 terms += f"-an "
