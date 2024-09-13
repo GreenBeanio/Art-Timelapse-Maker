@@ -79,6 +79,7 @@ class userArguments:
         modified_output_video_fade_out,
         modified_output_audio_fade_in,
         modified_output_audio_fade_out,
+        image_length,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -129,6 +130,7 @@ class userArguments:
         self.modified_output_video_fade_out = modified_output_video_fade_out
         self.modified_output_audio_fade_in = modified_output_audio_fade_in
         self.modified_output_audio_fade_out = modified_output_audio_fade_out
+        self.image_length = image_length
 
 
 # Function to make sure passed paths exist
@@ -389,6 +391,12 @@ def getPaths() -> userArguments:
             "Invalid modified output audio fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
         )
         valid_arguments = False
+    if cli_args.image_length >= 0:
+        image_length = cli_args.image_length
+    else:
+        logger.critical(
+            "Invalid image length: Must be a float equal to or greater than 0. 0 to disable (default)."
+        )
 
     # Close application if inputs aren't valid
     if not valid_arguments:
@@ -446,6 +454,7 @@ def getPaths() -> userArguments:
         modified_output_video_fade_out,
         modified_output_audio_fade_in,
         modified_output_audio_fade_out,
+        image_length,
     )
 
 
@@ -1902,7 +1911,12 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
         print("Answer the following questions  (-1 means default, 0 means disable)")
         # Get the speed factor
         while True:
-            speed_factor = getFloat("How much do you want to speed up the file?\n")
+            if not file_type == "image":
+                speed_factor = getFloat("How much do you want to speed up the file?\n")
+            else:
+                speed_factor = getFloat(
+                    "How many seconds do you want the image to last?\n"
+                )
             # Check if it's valid
             if file_type == "video":
                 if speed_factor == -1:
@@ -1923,11 +1937,17 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
                     )
             else:
                 # The image needs to be at least 1 frame in length
-                if speed_factor > (1 / timelapse_args.output_fps):
+                if (
+                    (speed_factor > (1 / timelapse_args.output_fps))
+                    or (speed_factor == 0)
+                    or (speed_factor == -1)
+                ):
+                    if speed_factor == -1:
+                        speed_factor == timelapse_args.image_length
                     break
                 else:
                     print(
-                        f"Speed factor for an image must be larger than 1 output frame length ({1/timelapse_args.output_fps} seconds at the output fps)"
+                        f"Speed factor for an image must be larger than 1 output frame length ({1/timelapse_args.output_fps} seconds at the output fps), 0 to disable, or -1 for default"
                     )
         # Get file modifications
         while True:
@@ -1981,17 +2001,31 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
             # Validate the options given
             # Clip
             if clip_in != 0 or clip_out != 0:
-                clipped_duration = getClipTime(
-                    file, clip_in, clip_out, clip_from_end, True
-                )["new_length"]
-                # Invalid length if the clipped duration is less than 0 or longer than the original
-                if not clipped_duration > 0 or clipped_duration > getLength(file):
-                    print("Clipped time is invalid.")
-                    has_error = True
+                if not file_type == "image":
+                    clipped_duration = getClipTime(
+                        file, clip_in, clip_out, clip_from_end, True
+                    )["new_length"]
+                    # Invalid length if the clipped duration is less than 0 or longer than the original
+                    if not clipped_duration > 0 or clipped_duration > getLength(file):
+                        print("Clipped time is invalid.")
+                        has_error = True
+                else:
+                    # If it's an image we're doing what the function does for the video and audio here, without the validation
+                    if clip_from_end:
+                        # Get the time to cut at
+                        new_duration = speed_factor - clip_out
+                    # If we are passing in the actual time to clip at
+                    else:
+                        new_duration = clip_out
+                    # Getting the new length after both buts
+                    clipped_duration = new_duration - clip_in
             else:
-                clipped_duration = getLength(file)
+                if not file_type == "image":
+                    clipped_duration = getLength(file)
+                else:
+                    clipped_duration = speed_factor
             # Sped up duration
-            if speed_factor != 0 and speed_factor != 1:
+            if speed_factor != 0 and speed_factor != 1 and file_type != "image":
                 sped_duration = clipped_duration / speed_factor
             else:
                 sped_duration = clipped_duration
@@ -2431,6 +2465,13 @@ parser.add_argument(
     help="How many seconds you want fade out of the modified output audio",
     type=float,
     default=0,
+)
+parser.add_argument(
+    "-il",
+    "--image_length",
+    help="How many seconds you want images to be by default",
+    type=float,
+    default=5,
 )
 
 # Get the command line arguments
