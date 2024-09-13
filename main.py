@@ -1513,18 +1513,24 @@ def getFadeTime(
 
 # Function to return the default dictionary (from cli arguments)
 def userDefault(file_type: bool) -> dict:
-    if file_type:
+    if file_type == "video":
         speed_factor = timelapse_args.speed_factor
         clip_in = timelapse_args.video_clip_in
         clip_out = timelapse_args.video_clip_out
         fade_in = timelapse_args.video_fade_in
         fade_out = timelapse_args.video_fade_out
-    else:
+    elif file_type == "image":
         speed_factor = timelapse_args.audio_speed_factor
         clip_in = timelapse_args.audio_clip_in
         clip_out = timelapse_args.audio_clip_out
         fade_in = timelapse_args.audio_fade_in
         fade_out = timelapse_args.audio_fade_out
+    else:
+        speed_factor = timelapse_args.image_length
+        clip_in = timelapse_args.video_clip_in
+        clip_out = timelapse_args.video_clip_out
+        fade_in = timelapse_args.video_fade_in
+        fade_out = timelapse_args.video_fade_out
     return {
         "speed_factor": speed_factor,
         "clip_in": clip_in,
@@ -1536,7 +1542,7 @@ def userDefault(file_type: bool) -> dict:
 
 
 # Function to prompt user or input the default amount
-def promptUser(file: pathlib.Path, file_type: bool) -> dict:
+def promptUser(file: pathlib.Path, file_type: str) -> dict:
     if timelapse_args.prompt:
         return userSettings(file, file_type)
     else:
@@ -1545,7 +1551,7 @@ def promptUser(file: pathlib.Path, file_type: bool) -> dict:
 
 # Function to get which files to ask the user about
 def promptFiles(
-    files: dict, temp_files: list, file_type: bool, current_answers: dict
+    files: dict, temp_files: list, file_type: str, current_answers: dict
 ) -> dict:
     # For every file passed in
     for file in files:
@@ -1556,11 +1562,44 @@ def promptFiles(
             if (
                 file in current_answers.keys() and timelapse_args.override_settings
             ) or file not in current_answers.keys():
+                # If the file isn't an image
+                if file_type != "image":
+                    # Check that the file isn't already a temp file
+                    if file not in temp_files:
+                        current_answers[file] = promptUser(file, file_type)
+                    # If they are a temp video file
+                    elif file_type == "video":
+                        # If we're overriding temp videos
+                        if timelapse_args.override_temp_video:
+                            current_answers[file] = promptUser(file, file_type)
+                    # If it's audio
+                    else:
+                        # If we're overriding temp audio
+                        if timelapse_args.override_temp_audio:
+                            current_answers[file] = promptUser(file, file_type)
+                # If the file type is an image
+                else:
+                    # Change the file name we're using to be the output of the image process
+                    out_file = pathlib.Path.joinpath(
+                        timelapse_args.temp_directory, f"{file.stem}.mp4"
+                    )
+                    # Check that the file isn't already a temp file
+                    if out_file not in temp_files:
+                        current_answers[file] = promptUser(file, file_type)
+                    # If they are a temp video file
+                    else:
+                        # If we're overriding temp videos
+                        if timelapse_args.override_temp_video:
+                            current_answers[file] = promptUser(file, file_type)
+        # If we're not using settings
+        else:
+            # If the file isn't an image
+            if file_type != "image":
                 # Check that the file isn't already a temp file
                 if file not in temp_files:
                     current_answers[file] = promptUser(file, file_type)
                 # If they are a temp video file
-                elif file_type:
+                elif file_type == "video":
                     # If we're overriding temp videos
                     if timelapse_args.override_temp_video:
                         current_answers[file] = promptUser(file, file_type)
@@ -1569,21 +1608,20 @@ def promptFiles(
                     # If we're overriding temp audio
                     if timelapse_args.override_temp_audio:
                         current_answers[file] = promptUser(file, file_type)
-        # If we're not using settings
-        else:
-            # Check that the file isn't already a temp file
-            if file not in temp_files:
-                current_answers[file] = promptUser(file, file_type)
-            # If they are a temp video file
-            elif file_type:
-                # If we're overriding temp videos
-                if timelapse_args.override_temp_video:
-                    current_answers[file] = promptUser(file, file_type)
-            # If it's audio
+            # If the file type is an image
             else:
-                # If we're overriding temp audio
-                if timelapse_args.override_temp_audio:
+                # Change the file name we're using to be the output of the image process
+                out_file = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}.mp4"
+                )
+                # Check that the file isn't already a temp file
+                if out_file not in temp_files:
                     current_answers[file] = promptUser(file, file_type)
+                # If they are a temp video file
+                else:
+                    # If we're overriding temp videos
+                    if timelapse_args.override_temp_video:
+                        current_answers[file] = promptUser(file, file_type)
     # Return the updating dictionary
     return current_answers
 
@@ -1848,7 +1886,7 @@ def writeJson(file: pathlib.Path, userSettings: dict) -> None:
 
 
 # Function to get the user to enter the information about the clip and fade for each file
-def userSettings(file: pathlib.Path, file_type: bool) -> dict:
+def userSettings(file: pathlib.Path, file_type: str) -> dict:
     print(f"The following questions are about the file {file.name}:")
     # Ask if they even want to modify this file
     wanted = getIntBool(
@@ -1866,11 +1904,11 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
         while True:
             speed_factor = getFloat("How much do you want to speed up the file?\n")
             # Check if it's valid
-            if file_type:
+            if file_type == "video":
                 if speed_factor == -1:
                     speed_factor = timelapse_args.speed_factor
                 break
-            else:
+            elif file_type == "audio":
                 if (
                     (speed_factor >= 0.5 and speed_factor <= 100)
                     or speed_factor == 0
@@ -1882,6 +1920,14 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
                 else:
                     print(
                         "Speed factor for audio must be between 0.5 and 100, 0 to disable, or -1 for default"
+                    )
+            else:
+                # The image needs to be at least 1 frame in length
+                if speed_factor > (1 / timelapse_args.output_fps):
+                    break
+                else:
+                    print(
+                        f"Speed factor for an image must be larger than 1 output frame length ({1/timelapse_args.output_fps} seconds at the output fps)"
                     )
         # Get file modifications
         while True:
@@ -2475,11 +2521,11 @@ else:
     userAnswers = {}
 
 # Get the user settings
-userAnswers = promptFiles(video_files, timelapse_video_files, True, userAnswers)
-userAnswers = promptFiles(audio_files, timelapse_audio_files, False, userAnswers)
+userAnswers = promptFiles(video_files, timelapse_video_files, "video", userAnswers)
+userAnswers = promptFiles(audio_files, timelapse_audio_files, "audio", userAnswers)
 
 # Need to figure this out
-userAnswers = promptFiles(image_files, timelapse_video_files, True, userAnswers)
+userAnswers = promptFiles(image_files, timelapse_video_files, "image", userAnswers)
 
 ### Maybe add setting to not save json because we might not want to override
 # Save the settings
