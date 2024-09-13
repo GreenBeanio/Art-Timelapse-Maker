@@ -1467,6 +1467,7 @@ def getClipTime(
                 "new_duration": new_duration,
                 "output_length": new_length,
             }
+    # If we are prompted just return the results
     else:
         # Get the cut times
         return {
@@ -1673,6 +1674,7 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
         )
 
 
+# Function to create the modified output
 def createModifiedOutput(
     input_path: pathlib.Path, output_path: pathlib.Path, file_type: bool
 ) -> None:
@@ -1972,6 +1974,103 @@ def userSettings(file: pathlib.Path, file_type: bool) -> dict:
     # Return the default options (global)
     else:
         return userDefault(file_type)
+
+
+# Function to create the video from the image
+def ImageVideo(
+    file: pathlib.Path, image_video: pathlib.Path, image_video_out: pathlib.Path
+) -> None:
+    # Creating the concat file
+    logger.info(f'Creating the audio concat file at "{concat_image}"')
+    concat_image = pathlib.Path.joinpath(timelapse_args.temp_directory, "image.txt")
+    # The speed factor for images is how many seconds you want to image to last
+    output_frames = round(
+        userAnswers[file]["speed_factor"] * timelapse_args.output_fps, 0
+    )
+    # Replace apostrophes in the file with the escape sequence ffmpeg needs
+    # file_string = str(file.resolve().absolute())
+    file_string = str(file.resolve())
+    file_string = file_string.replace("'", "'\\''")
+    # New str to actually use
+    temp_str = ""
+    # Write a line fore each frame we want output
+    for frame in range(output_frames):
+        temp_str += f"file '{file_string}'\n"
+    # Write the file
+    with open(concat_image, "w+") as file:
+        file.write(temp_str)
+    logger.info(f'Created the audio concat file at "{concat_image}"')
+    # Creating the video from the concat file
+    image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB -r {timelapse_args.output_fps} -c:v libx265 "{image_video}"'
+    runFFmpeg(image_terms)
+    # Treat it like a regular video (without the speed factor as you should have put in the length you wanted it to be already)
+    # Create the new timelapse
+    start = time.perf_counter()
+    logger.info(f'Creating new timelapse of "{image_video}" at "{image_video_out}"')
+    timelapseVideo(
+        image_video,
+        0,
+        userAnswers[file]["clip_in"],
+        userAnswers[file]["clip_out"],
+        userAnswers[file]["clip_from_end"],
+        userAnswers[file]["fade_in"],
+        userAnswers[file]["fade_out"],
+    )
+    end = time.perf_counter()
+    duration = end - start
+    logger.info(
+        f'Successfully created a timelapse of "{image_video}" after {duration} seconds'
+    )
+    # Deleting the temporary video created from the image that was then treated like other videos
+    delLog(
+        image_video,
+        "Deleting the temporary image video",
+        "Deleted the temporary image video",
+    )
+
+
+# Function to check if we're making a video from an image
+def logImageVideo(
+    file: pathlib.Path, image_video: pathlib.Path, image_video_out: pathlib.Path
+) -> None:
+    logger.info(f'Creating the video for the image at "{file}"')
+    start = time.perf_counter()
+    ImageVideo(file, image_video, image_video_out)
+    end = time.perf_counter()
+    duration = end - start
+    logger.info(
+        f'Successfully created the new video for the image at "{image_video_out}" after {duration} seconds'
+    )
+
+
+# Function to handle creating the videos from all the images
+def createImage(image_files: list) -> None:
+    # Turn every video into a timelapse
+    for image in image_files:
+        # Check if a version of it already exists
+        image_video = pathlib.Path.joinpath(
+            timelapse_args.video_directory, f"{image.stem}.mp4"
+        )
+        image_video_out = pathlib.Path.joinpath(
+            timelapse_args.temp_directory, f"{image.stem}.mp4"
+        )
+        if checkPath(image_video_out):
+            # Delete the existing file if that setting is enabled
+            if timelapse_args.override_temp_video:
+                delLog(
+                    image_video_out,
+                    "Deleting existing temp video created from image",
+                    "Deleted existing temp video created from image",
+                )
+                # Create the new timelapse
+                logImageVideo(image, image_video, image_video_out)
+        # If the file doesn't exist just create it
+        else:
+            # Create the new timelapse
+            logImageVideo(image, image_video, image_video_out)
+        # Delete the source image file if that setting is enabled
+        if timelapse_args.delete_video:
+            delLog(image, "Deleting existing image", "Deleted existing image")
 
 
 # Command line arguments
@@ -2288,6 +2387,7 @@ parser.add_argument(
     default=0,
 )
 
+# Get the command line arguments
 cli_args = parser.parse_args()
 # print(cli_args)  # Temporary print for testing
 
@@ -2356,6 +2456,7 @@ if timelapse_args.clear_settings:
 # Get the files
 video_files = getFiles(timelapse_args.video_directory, [".mp4", ".mkv"])
 audio_files = getFiles(timelapse_args.audio_directory, [".wav", ".mp3"])
+image_files = getFiles(timelapse_args.video_directory, [".png", ".jpg"])
 
 # Create a concat list of all the temp files (to ignore asking the user about them)
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
@@ -2377,6 +2478,10 @@ else:
 userAnswers = promptFiles(video_files, timelapse_video_files, True, userAnswers)
 userAnswers = promptFiles(audio_files, timelapse_audio_files, False, userAnswers)
 
+# Need to figure this out
+userAnswers = promptFiles(image_files, timelapse_video_files, True, userAnswers)
+
+### Maybe add setting to not save json because we might not want to override
 # Save the settings
 writeJson(json_file, userAnswers)
 
@@ -2389,6 +2494,11 @@ if len(video_files) != 0:
 if len(audio_files) != 0:
     # Create the modified audio
     createAudio(audio_files)
+
+# If there are images in the video directory
+if len(audio_files) != 0:
+    # Create timelapses
+    createImage(video_files)
 
 # Create an updated concat list of all the temp files
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
