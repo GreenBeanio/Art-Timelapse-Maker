@@ -80,6 +80,7 @@ class userArguments:
         modified_output_audio_fade_in,
         modified_output_audio_fade_out,
         image_length,
+        dont_save_settings,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -131,6 +132,7 @@ class userArguments:
         self.modified_output_audio_fade_in = modified_output_audio_fade_in
         self.modified_output_audio_fade_out = modified_output_audio_fade_out
         self.image_length = image_length
+        self.dont_save_settings = dont_save_settings
 
 
 # Function to make sure passed paths exist
@@ -231,6 +233,7 @@ def getPaths() -> userArguments:
     randomize_video = cli_args.randomize_video
     override_source_path = cli_args.override_source_path
     preserve_audio = cli_args.preserve_audio
+    dont_save_settings = cli_args.dont_save_settings
 
     # Validating other inputs
     if cli_args.output_fps > 0:
@@ -391,11 +394,11 @@ def getPaths() -> userArguments:
             "Invalid modified output audio fade out: Must be a float equal to or greater than 0. 0 to disable (default)."
         )
         valid_arguments = False
-    if cli_args.image_length >= 0:
+    if cli_args.image_length >= (1 / cli_args.output_fps):
         image_length = cli_args.image_length
     else:
         logger.critical(
-            "Invalid image length: Must be a float equal to or greater than 0. 0 to disable (default)."
+            f"Invalid image length: Default image length must be larger than 1 output frame length ({1/cli_args.output_fps} seconds at the output fps)"
         )
 
     # Close application if inputs aren't valid
@@ -455,6 +458,7 @@ def getPaths() -> userArguments:
         modified_output_audio_fade_in,
         modified_output_audio_fade_out,
         image_length,
+        dont_save_settings,
     )
 
 
@@ -765,12 +769,12 @@ def logTimelapses(video: pathlib.Path, output: pathlib.Path) -> None:
     start = time.perf_counter()
     timelapseVideo(
         video,
-        userAnswers[video]["speed_factor"],
-        userAnswers[video]["clip_in"],
-        userAnswers[video]["clip_out"],
-        userAnswers[video]["clip_from_end"],
-        userAnswers[video]["fade_in"],
-        userAnswers[video]["fade_out"],
+        user_answers[video]["speed_factor"],
+        user_answers[video]["clip_in"],
+        user_answers[video]["clip_out"],
+        user_answers[video]["clip_from_end"],
+        user_answers[video]["fade_in"],
+        user_answers[video]["fade_out"],
     )
     end = time.perf_counter()
     duration = end - start
@@ -1207,12 +1211,12 @@ def logAudio(audio: pathlib.Path, output: pathlib.Path) -> None:
     start = time.perf_counter()
     timelapseAudio(
         audio,
-        userAnswers[audio]["speed_factor"],
-        userAnswers[audio]["clip_in"],
-        userAnswers[audio]["clip_out"],
-        userAnswers[audio]["clip_from_end"],
-        userAnswers[audio]["fade_in"],
-        userAnswers[audio]["fade_out"],
+        user_answers[audio]["speed_factor"],
+        user_answers[audio]["clip_in"],
+        user_answers[audio]["clip_out"],
+        user_answers[audio]["clip_from_end"],
+        user_answers[audio]["fade_in"],
+        user_answers[audio]["fade_out"],
     )
     end = time.perf_counter()
     duration = end - start
@@ -1499,7 +1503,7 @@ def getFadeTime(
     fade_out_s = duration - fade_out_l
     # Checking to make sure the fades aren't longer than the video
     # Unlike getClipTime() this will always be ran without user input
-    if not (fade_in_l + fade_out_l) > duration:
+    if (fade_in_l + fade_out_l) > duration:
         logger.warning(
             f'Total fade time given for file "{file}" is longer than the file. Both fades have been made to half the file\'s duration.)'
         )
@@ -1937,13 +1941,15 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
                     )
             else:
                 # The image needs to be at least 1 frame in length
-                if (speed_factor > (1 / timelapse_args.output_fps)) or (speed_factor == 0) or (speed_factor == -1):
+                if (speed_factor > (1 / timelapse_args.output_fps)) or (
+                    speed_factor == -1
+                ):
                     if speed_factor == -1:
                         speed_factor == timelapse_args.image_length
                     break
                 else:
                     print(
-                        f"Speed factor for an image must be larger than 1 output frame length ({1/timelapse_args.output_fps} seconds at the output fps), 0 to disable, or -1 for default"
+                        f"Speed factor for an image must be larger than 1 output frame length ({1/timelapse_args.output_fps} seconds at the output fps), or -1 for default"
                     )
         # Get file modifications
         while True:
@@ -2000,7 +2006,7 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
                 if not file_type == "image":
                     clipped_duration = getClipTime(
                         file, clip_in, clip_out, clip_from_end, True
-                    )["new_length"]
+                    )["output_length"]
                     # Invalid length if the clipped duration is less than 0 or longer than the original
                     if not clipped_duration > 0 or clipped_duration > getLength(file):
                         print("Clipped time is invalid.")
@@ -2027,7 +2033,7 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
                 sped_duration = clipped_duration
             # Fade
             if fade_in != 0 or fade_out != 0:
-                if not (fade_in + fade_out) > sped_duration:
+                if (fade_in + fade_out) > sped_duration:
                     if not file_type == "image":
                         print(
                             f"Total fade time is longer than the sped up {file_type} ({round(sped_duration,2)} seconds)"
@@ -2062,11 +2068,11 @@ def ImageVideo(
     file: pathlib.Path, image_video: pathlib.Path, image_video_out: pathlib.Path
 ) -> None:
     # Creating the concat file
-    logger.info(f'Creating the audio concat file at "{concat_image}"')
     concat_image = pathlib.Path.joinpath(timelapse_args.temp_directory, "image.txt")
+    logger.info(f'Creating the image concat file at "{concat_image}"')
     # The speed factor for images is how many seconds you want to image to last
-    output_frames = round(
-        userAnswers[file]["speed_factor"] * timelapse_args.output_fps, 0
+    output_frames = int(
+        round(user_answers[file]["speed_factor"] * timelapse_args.output_fps, 0)
     )
     # Replace apostrophes in the file with the escape sequence ffmpeg needs
     # file_string = str(file.resolve().absolute())
@@ -2078,12 +2084,18 @@ def ImageVideo(
     for frame in range(output_frames):
         temp_str += f"file '{file_string}'\n"
     # Write the file
-    with open(concat_image, "w+") as file:
-        file.write(temp_str)
-    logger.info(f'Created the audio concat file at "{concat_image}"')
+    with open(concat_image, "w+") as wfile:
+        wfile.write(temp_str)
+    logger.info(f'Created the image concat file at "{concat_image}"')
     # Creating the video from the concat file
-    image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB -r {timelapse_args.output_fps} -c:v libx265 "{image_video}"'
+    start = time.perf_counter()
+    logger.info(f'Creating the video "{image_video}" from the image "{file}"')
+    # Have to scale the image for this to work ... should probably actualyl scale all the videos to a desired resolution just in case they're not all the same resolution for some reason ... even though they should be
+    image_terms = f'ffmpeg -f concat -safe 0 -i "{concat_image}" -vf "settb=AVTB,setpts=N/{timelapse_args.output_fps}/TB,pad=ceil(iw/2)*2:ceil(ih/2)*2" -r {timelapse_args.output_fps} -c:v libx265 "{image_video}"'
     runFFmpeg(image_terms)
+    end = time.perf_counter()
+    duration = end - start
+    logger.info(f'Created the video "{image_video}" after {duration} seconds')
     # Treat it like a regular video (without the speed factor as you should have put in the length you wanted it to be already)
     # Create the new timelapse
     start = time.perf_counter()
@@ -2091,11 +2103,11 @@ def ImageVideo(
     timelapseVideo(
         image_video,
         0,
-        userAnswers[file]["clip_in"],
-        userAnswers[file]["clip_out"],
-        userAnswers[file]["clip_from_end"],
-        userAnswers[file]["fade_in"],
-        userAnswers[file]["fade_out"],
+        user_answers[file]["clip_in"],
+        user_answers[file]["clip_out"],
+        user_answers[file]["clip_from_end"],
+        user_answers[file]["fade_in"],
+        user_answers[file]["fade_out"],
     )
     end = time.perf_counter()
     duration = end - start
@@ -2472,7 +2484,13 @@ parser.add_argument(
     "--image_length",
     help="How many seconds you want images to be by default",
     type=float,
-    default=5,
+    default=10,  # Not sure about this length, but oh well
+)
+parser.add_argument(
+    "-dss",
+    "--dont_save_settings",
+    help="Doesn't save the settings if passed",
+    action="store_false",
 )
 
 # Get the command line arguments
@@ -2554,24 +2572,22 @@ timelapse_audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"]
 json_file = pathlib.Path.joinpath(timelapse_args.settings_directory, "settings.json")
 if timelapse_args.use_settings and checkPath(json_file):
     try:
-        userAnswers = loadJson(json_file)
+        user_answers = loadJson(json_file)
         logger.info(f"Loaded settings from {json_file}")
     except:
-        userAnswers = {}
+        user_answers = {}
         logger.warning(f"Settings file {json_file} is invalid and will be ignored")
 else:
-    userAnswers = {}
+    user_answers = {}
 
 # Get the user settings
-userAnswers = promptFiles(video_files, timelapse_video_files, "video", userAnswers)
-userAnswers = promptFiles(audio_files, timelapse_audio_files, "audio", userAnswers)
+user_answers = promptFiles(video_files, timelapse_video_files, "video", user_answers)
+user_answers = promptFiles(audio_files, timelapse_audio_files, "audio", user_answers)
+user_answers = promptFiles(image_files, timelapse_video_files, "image", user_answers)
 
-# Need to figure this out
-userAnswers = promptFiles(image_files, timelapse_video_files, "image", userAnswers)
-
-### Maybe add setting to not save json because we might not want to override
 # Save the settings
-writeJson(json_file, userAnswers)
+if timelapse_args.dont_save_settings:
+    writeJson(json_file, user_answers)
 
 # If there are videos
 if len(video_files) != 0:
@@ -2584,9 +2600,9 @@ if len(audio_files) != 0:
     createAudio(audio_files)
 
 # If there are images in the video directory
-if len(audio_files) != 0:
-    # Create timelapses
-    createImage(video_files)
+if len(image_files) != 0:
+    # Convert the images into videos
+    createImage(image_files)
 
 # Create an updated concat list of all the temp files
 timelapse_video_files = getFiles(timelapse_args.temp_directory, [".mp4", ".mkv"])
