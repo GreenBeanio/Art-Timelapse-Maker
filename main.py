@@ -1937,11 +1937,7 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
                     )
             else:
                 # The image needs to be at least 1 frame in length
-                if (
-                    (speed_factor > (1 / timelapse_args.output_fps))
-                    or (speed_factor == 0)
-                    or (speed_factor == -1)
-                ):
+                if (speed_factor > (1 / timelapse_args.output_fps)) or (speed_factor == 0) or (speed_factor == -1):
                     if speed_factor == -1:
                         speed_factor == timelapse_args.image_length
                     break
@@ -2032,9 +2028,14 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
             # Fade
             if fade_in != 0 or fade_out != 0:
                 if not (fade_in + fade_out) > sped_duration:
-                    print(
-                        f"Total fade time is longer than the sped up video ({round(sped_duration,2)} seconds)"
-                    )
+                    if not file_type == "image":
+                        print(
+                            f"Total fade time is longer than the sped up {file_type} ({round(sped_duration,2)} seconds)"
+                        )
+                    else:
+                        print(
+                            f"Total fade time is longer than the image video ({round(sped_duration,2)} seconds)"
+                        )
                     has_error = True
             if not has_error:
                 break
