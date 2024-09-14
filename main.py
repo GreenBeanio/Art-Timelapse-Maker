@@ -567,6 +567,7 @@ def runFFmpeg(terms: str) -> None:
 # Function to create a timelapse from a video
 def timelapseVideo(
     file: pathlib.Path,
+    final_output: pathlib.Path,
     speed_factor: float,
     cut_in: float,
     cut_out: float,
@@ -574,7 +575,6 @@ def timelapseVideo(
     fade_in: float,
     fade_out: float,
 ) -> None:
-    final_output = pathlib.Path.joinpath(timelapse_args.temp_directory, file.name)
     # Variables for handling the current process
     current_input = file
     ## FFmpeg is a little fucky so I think I have to do these in multiple steps
@@ -621,15 +621,9 @@ def timelapseVideo(
         # Add the input file
         terms += f'-i "{file}" '
         # Compare the resolutions
-        c_resolution = getResolution(file)
-        if (
-            c_resolution[0] != timelapse_args.width
-            or c_resolution[1] != timelapse_args.height
-        ):
-            match_resolution = False
+        match_resolution = checkResolution(file)
+        if not match_resolution:
             terms += f'-vf "{resize_vf}" '
-        else:
-            match_resolution = True
         # Add the threads
         if timelapse_args.threads != -1:
             terms += f"-threads {timelapse_args.threads} "
@@ -805,18 +799,19 @@ def timelapseVideo(
 
 
 # Function to create the timelapse and the log info
-def logTimelapses(video: pathlib.Path, output: pathlib.Path) -> None:
+def logTimelapses(video: pathlib.Path, output: pathlib.Path, index: int) -> None:
     # Create the new timelapse
     logger.info(f'Creating new timelapse of "{video}" at "{output}"')
     start = time.perf_counter()
     timelapseVideo(
         video,
-        user_answers[video]["speed_factor"],
-        user_answers[video]["clip_in"],
-        user_answers[video]["clip_out"],
-        user_answers[video]["clip_from_end"],
-        user_answers[video]["fade_in"],
-        user_answers[video]["fade_out"],
+        output,
+        user_answers[video][index]["speed_factor"],
+        user_answers[video][index]["clip_in"],
+        user_answers[video][index]["clip_out"],
+        user_answers[video][index]["clip_from_end"],
+        user_answers[video][index]["fade_in"],
+        user_answers[video][index]["fade_out"],
     )
     end = time.perf_counter()
     duration = end - start
@@ -841,26 +836,33 @@ def delLog(file: pathlib.Path, notice1: str, notice2: str) -> None:
         logger.warning(f'Couldn\'t delete at "{file}"')
 
 
-# Function to create timelapses
-def createTimelapses(video_files: list) -> None:
+# Function to create multiple timelapses
+def createTimelapses(video_files: list):
     # Turn every video into a timelapse
     for video in video_files:
-        # Check if a timelapse already exists
-        output = pathlib.Path.joinpath(timelapse_args.temp_directory, video.name)
-        if checkPath(output):
-            # Delete the existing file if that setting is enabled
-            if timelapse_args.override_temp_video:
-                delLog(
-                    output,
-                    "Deleting existing temp video",
-                    "Deleted existing temp video",
-                )
+        video_settings = user_answers[video]
+        # For every clip we're making for that file
+        # for index, clips in enumerate(video_settings):
+        for index in range(len(video_settings)):
+            # Creating the new output
+            output = pathlib.Path.joinpath(
+                timelapse_args.temp_directory, f"{video.stem}_{index}{video.suffix}"
+            )
+            # Check if a timelapse already exists
+            if checkPath(output):
+                # Delete the existing file if that setting is enabled
+                if timelapse_args.override_temp_video:
+                    delLog(
+                        output,
+                        "Deleting existing temp video",
+                        "Deleted existing temp video",
+                    )
+                    # Create the new timelapse
+                    logTimelapses(video, output, index)
+            # If the file doesn't exist just create it
+            else:
                 # Create the new timelapse
-                logTimelapses(video, output)
-        # If the file doesn't exist just create it
-        else:
-            # Create the new timelapse
-            logTimelapses(video, output)
+                logTimelapses(video, output, index)
         # Delete the source video file if that setting is enabled
         if timelapse_args.delete_video:
             delLog(
@@ -1066,6 +1068,7 @@ def generateTempo(speed: float) -> str:
 # Function to modify an audio file
 def timelapseAudio(
     file: pathlib.Path,
+    final_output: pathlib.Path,
     speed_factor: float,
     cut_in: float,
     cut_out: float,
@@ -1073,7 +1076,6 @@ def timelapseAudio(
     fade_in: float,
     fade_out: float,
 ) -> None:
-    final_output = pathlib.Path.joinpath(timelapse_args.temp_directory, file.name)
     # Variables for handling the current process
     current_input = file
     ## FFmpeg is a little fucky so I think I have to do these in multiple steps
@@ -1247,18 +1249,19 @@ def timelapseAudio(
 
 
 # Function to create the audio and the log info
-def logAudio(audio: pathlib.Path, output: pathlib.Path) -> None:
+def logAudio(audio: pathlib.Path, output: pathlib.Path, index: int) -> None:
     # Create the new timelapse
     logger.info(f'Creating modified audio of "{audio}" at "{output}"')
     start = time.perf_counter()
     timelapseAudio(
         audio,
-        user_answers[audio]["speed_factor"],
-        user_answers[audio]["clip_in"],
-        user_answers[audio]["clip_out"],
-        user_answers[audio]["clip_from_end"],
-        user_answers[audio]["fade_in"],
-        user_answers[audio]["fade_out"],
+        output,
+        user_answers[audio][index]["speed_factor"],
+        user_answers[audio][index]["clip_in"],
+        user_answers[audio][index]["clip_out"],
+        user_answers[audio][index]["clip_from_end"],
+        user_answers[audio][index]["fade_in"],
+        user_answers[audio][index]["fade_out"],
     )
     end = time.perf_counter()
     duration = end - start
@@ -1269,22 +1272,27 @@ def logAudio(audio: pathlib.Path, output: pathlib.Path) -> None:
 def createAudio(audio_files: list) -> None:
     # Turn every video into a timelapse
     for audio in audio_files:
-        # Check if a timelapse already exists
-        output = pathlib.Path.joinpath(timelapse_args.temp_directory, audio.name)
-        if checkPath(output):
-            # Delete the existing file if that setting is enabled
-            if timelapse_args.override_temp_audio:
-                delLog(
-                    output,
-                    "Deleting existing temp audio",
-                    "Deleted existing temp audio",
-                )
+        audio_settings = user_answers[audio]
+        for index in range(len(audio_settings)):
+            # Creating the new output
+            output = pathlib.Path.joinpath(
+                timelapse_args.temp_directory, f"{audio.stem}_{index}{audio.suffix}"
+            )
+            # Check if a timelapse already exists
+            if checkPath(output):
+                # Delete the existing file if that setting is enabled
+                if timelapse_args.override_temp_audio:
+                    delLog(
+                        output,
+                        "Deleting existing temp audio",
+                        "Deleted existing temp audio",
+                    )
+                    # Create the new timelapse
+                    logAudio(audio, output, index)
+            # If the file doesn't exist just create it
+            else:
                 # Create the new timelapse
-                logAudio(audio, output)
-        # If the file doesn't exist just create it
-        else:
-            # Create the new timelapse
-            logAudio(audio, output)
+                logAudio(audio, output, index)
         # Delete the source video file if that setting is enabled
         if timelapse_args.delete_audio:
             delLog(
@@ -1567,7 +1575,7 @@ def getFadeTime(
 
 
 # Function to return the default dictionary (from cli arguments)
-def userDefault(file_type: bool) -> dict:
+def userDefault(file_type: bool) -> List[dict]:
     if file_type == "video":
         speed_factor = timelapse_args.speed_factor
         clip_in = timelapse_args.video_clip_in
@@ -1586,14 +1594,16 @@ def userDefault(file_type: bool) -> dict:
         clip_out = timelapse_args.video_clip_out
         fade_in = timelapse_args.video_fade_in
         fade_out = timelapse_args.video_fade_out
-    return {
-        "speed_factor": speed_factor,
-        "clip_in": clip_in,
-        "clip_out": clip_out,
-        "clip_from_end": True,
-        "fade_in": fade_in,
-        "fade_out": fade_out,
-    }
+    return [
+        {
+            "speed_factor": speed_factor,
+            "clip_in": clip_in,
+            "clip_out": clip_out,
+            "clip_from_end": True,
+            "fade_in": fade_in,
+            "fade_out": fade_out,
+        }
+    ]
 
 
 # Function to prompt user or input the default amount
@@ -1605,9 +1615,7 @@ def promptUser(file: pathlib.Path, file_type: str) -> dict:
 
 
 # Function to get which files to ask the user about
-def promptFiles(
-    files: dict, temp_files: list, file_type: str, current_answers: dict
-) -> dict:
+def promptFiles(files: dict, temp_files: list, file_type: str, current_answers: dict) -> dict:
     # For every file passed in
     for file in files:
         # If we're using settings
@@ -1957,153 +1965,177 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
         wanted = False
     # If they want to modify the file
     if wanted:
-        # Inform them of the option
-        print("Answer the following questions  (-1 means default, 0 means disable)")
-        # Get the speed factor
+        # Create an item to store the response
+        response = []
         while True:
-            if not file_type == "image":
-                speed_factor = getFloat("How much do you want to speed up the file?\n")
-            else:
-                speed_factor = getFloat(
-                    "How many seconds do you want the image to last?\n"
-                )
-            # Check if it's valid
-            if file_type == "video":
-                if speed_factor == -1:
-                    speed_factor = timelapse_args.speed_factor
-                break
-            elif file_type == "audio":
-                if (
-                    (speed_factor >= 0.5 and speed_factor <= 100)
-                    or speed_factor == 0
-                    or speed_factor == -1
-                ):
-                    if speed_factor == -1:
-                        speed_factor = timelapse_args.audio_speed_factor
-                    break
-                else:
-                    print(
-                        "Speed factor for audio must be between 0.5 and 100, 0 to disable, or -1 for default"
-                    )
-            else:
-                # The image needs to be at least 1 frame in length
-                if (speed_factor > (1 / timelapse_args.output_fps)) or (
-                    speed_factor == -1
-                ):
-                    if speed_factor == -1:
-                        speed_factor == timelapse_args.image_length
-                    break
-                else:
-                    print(
-                        f"Speed factor for an image must be larger than 1 output frame length ({1/timelapse_args.output_fps} seconds at the output fps), or -1 for default"
-                    )
-        # Get file modifications
-        while True:
-            # Set bool for errors
-            has_error = False
-            # Get the clip in duration
-            clip_in = getFloat("How many seconds do you want to clip from the start?\n")
-            if clip_in == -1:
-                if file_type:
-                    clip_in = timelapse_args.video_clip_in
-                else:
-                    clip_in = timelapse_args.audio_clip_in
-            # Get the type of clip from the end
-            clip_from_end = getIntBool(
-                "Do you want to clip out with the ending time (in seconds) of the clip [0] or with the seconds cut from the end [1]? (If using the default option for clip out this choice doesn't matter)\n"
-            )
-            if clip_from_end == 0:
-                clip_from_end = False
-            elif clip_from_end == 1:
-                clip_from_end = True
-            # Get the clip end duration
-            if clip_from_end:
-                clip_out = getFloat(
-                    "How many seconds do you wish to cut form the end?\n"
-                )
-            else:
-                clip_out = getFloat(
-                    "What time (in seconds) do you want to file to end?\n"
-                )
-            if clip_out == -1:
-                # Going to assume if you're using the default it's form the end not an exact time
-                clip_from_end = True
-                if file_type:
-                    clip_out = timelapse_args.video_clip_out
-                else:
-                    clip_out = timelapse_args.audio_clip_out
-            # Get the fade in duration
-            fade_in = getFloat("How many seconds do you wish to fade in?\n")
-            if fade_in == -1:
-                if file_type:
-                    fade_in = timelapse_args.video_fade_in
-                else:
-                    fade_in = timelapse_args.video_fade_out
-            # Get the fade out duration
-            fade_out = getFloat("How many seconds do you wish to fade out?\n")
-            if fade_out == -1:
-                if file_type:
-                    fade_out = timelapse_args.video_fade_out
-                else:
-                    fade_out = timelapse_args.audio_fade_out
-            # Validate the options given
-            # Clip
-            if clip_in != 0 or clip_out != 0:
+            # Inform them of the option
+            print("Answer the following questions  (-1 means default, 0 means disable)")
+            # Get the speed factor
+            while True:
                 if not file_type == "image":
-                    clipped_duration = getClipTime(
-                        file, clip_in, clip_out, clip_from_end, True
-                    )["output_length"]
-                    # Invalid length if the clipped duration is less than 0 or longer than the original
-                    if not clipped_duration > 0 or clipped_duration > getLength(file):
-                        print("Clipped time is invalid.")
-                        has_error = True
+                    speed_factor = getFloat(
+                        "How much do you want to speed up the file?\n"
+                    )
                 else:
-                    # If it's an image we're doing what the function does for the video and audio here, without the validation
-                    if clip_from_end:
-                        # Get the time to cut at
-                        new_duration = speed_factor - clip_out
-                    # If we are passing in the actual time to clip at
+                    speed_factor = getFloat(
+                        "How many seconds do you want the image to last?\n"
+                    )
+                # Check if it's valid
+                if file_type == "video":
+                    if speed_factor == -1:
+                        speed_factor = timelapse_args.speed_factor
+                    break
+                elif file_type == "audio":
+                    if (
+                        (speed_factor >= 0.5 and speed_factor <= 100)
+                        or speed_factor == 0
+                        or speed_factor == -1
+                    ):
+                        if speed_factor == -1:
+                            speed_factor = timelapse_args.audio_speed_factor
+                        break
                     else:
-                        new_duration = clip_out
-                    # Getting the new length after both buts
-                    clipped_duration = new_duration - clip_in
-            else:
-                if not file_type == "image":
-                    clipped_duration = getLength(file)
+                        print(
+                            "Speed factor for audio must be between 0.5 and 100, 0 to disable, or -1 for default"
+                        )
                 else:
-                    clipped_duration = speed_factor
-            # Sped up duration
-            if speed_factor != 0 and speed_factor != 1 and file_type != "image":
-                sped_duration = clipped_duration / speed_factor
-            else:
-                sped_duration = clipped_duration
-            # Fade
-            if fade_in != 0 or fade_out != 0:
-                if (fade_in + fade_out) > sped_duration:
+                    # The image needs to be at least 1 frame in length
+                    if (speed_factor > (1 / timelapse_args.output_fps)) or (
+                        speed_factor == -1
+                    ):
+                        if speed_factor == -1:
+                            speed_factor = timelapse_args.image_length
+                        break
+                    else:
+                        print(
+                            f"Speed factor for an image must be larger than 1 output frame length ({1/timelapse_args.output_fps} seconds at the output fps), or -1 for default"
+                        )
+            # Get file modifications
+            while True:
+                # Set bool for errors
+                has_error = False
+                # Get the clip in duration
+                clip_in = getFloat(
+                    "How many seconds do you want to clip from the start?\n"
+                )
+                if clip_in == -1:
+                    if file_type:
+                        clip_in = timelapse_args.video_clip_in
+                    else:
+                        clip_in = timelapse_args.audio_clip_in
+                # Get the type of clip from the end
+                clip_from_end = getIntBool(
+                    "Do you want to clip out with the ending time (in seconds) of the clip [0] or with the seconds cut from the end [1]? (If using the default option for clip out this choice doesn't matter)\n"
+                )
+                if clip_from_end == 0:
+                    clip_from_end = False
+                elif clip_from_end == 1:
+                    clip_from_end = True
+                # Get the clip end duration
+                if clip_from_end:
+                    clip_out = getFloat(
+                        "How many seconds do you wish to cut form the end?\n"
+                    )
+                else:
+                    clip_out = getFloat(
+                        "What time (in seconds) do you want to file to end?\n"
+                    )
+                if clip_out == -1:
+                    # Going to assume if you're using the default it's form the end not an exact time
+                    clip_from_end = True
+                    if file_type:
+                        clip_out = timelapse_args.video_clip_out
+                    else:
+                        clip_out = timelapse_args.audio_clip_out
+                # Get the fade in duration
+                fade_in = getFloat("How many seconds do you wish to fade in?\n")
+                if fade_in == -1:
+                    if file_type:
+                        fade_in = timelapse_args.video_fade_in
+                    else:
+                        fade_in = timelapse_args.video_fade_out
+                # Get the fade out duration
+                fade_out = getFloat("How many seconds do you wish to fade out?\n")
+                if fade_out == -1:
+                    if file_type:
+                        fade_out = timelapse_args.video_fade_out
+                    else:
+                        fade_out = timelapse_args.audio_fade_out
+                # Validate the options given
+                # Clip
+                if clip_in != 0 or clip_out != 0:
                     if not file_type == "image":
-                        print(
-                            f"Total fade time is longer than the sped up {file_type} ({round(sped_duration,2)} seconds)"
-                        )
+                        clipped_duration = getClipTime(
+                            file, clip_in, clip_out, clip_from_end, True
+                        )["output_length"]
+                        # Invalid length if the clipped duration is less than 0 or longer than the original
+                        if not clipped_duration > 0 or clipped_duration > getLength(
+                            file
+                        ):
+                            print("Clipped time is invalid.")
+                            has_error = True
                     else:
-                        print(
-                            f"Total fade time is longer than the image video ({round(sped_duration,2)} seconds)"
-                        )
-                    has_error = True
-            if not has_error:
-                break
-            # If there was an error and we didn't break the loop ask again
-            print(
-                f"There was an error: The following questions are about the file {file.name}:"
+                        # If it's an image we're doing what the function does for the video and audio here, without the validation
+                        if clip_from_end:
+                            # Get the time to cut at
+                            new_duration = speed_factor - clip_out
+                        # If we are passing in the actual time to clip at
+                        else:
+                            new_duration = clip_out
+                        # Getting the new length after both buts
+                        clipped_duration = new_duration - clip_in
+                else:
+                    if not file_type == "image":
+                        clipped_duration = getLength(file)
+                    else:
+                        clipped_duration = speed_factor
+                # Sped up duration
+                if speed_factor != 0 and speed_factor != 1 and file_type != "image":
+                    sped_duration = clipped_duration / speed_factor
+                else:
+                    sped_duration = clipped_duration
+                # Fade
+                if fade_in != 0 or fade_out != 0:
+                    if (fade_in + fade_out) > sped_duration:
+                        if not file_type == "image":
+                            print(
+                                f"Total fade time is longer than the sped up {file_type} ({round(sped_duration,2)} seconds)"
+                            )
+                        else:
+                            print(
+                                f"Total fade time is longer than the image video ({round(sped_duration,2)} seconds)"
+                            )
+                        has_error = True
+                if not has_error:
+                    break
+                # If there was an error and we didn't break the loop ask again
+                print(
+                    f"There was an error: The following questions are about the file {file.name}:"
+                )
+            # If we made it this far add the current values to the response
+            response.append(
+                {
+                    "speed_factor": speed_factor,
+                    "clip_in": clip_in,
+                    "clip_out": clip_out,
+                    "clip_from_end": clip_from_end,
+                    "fade_in": fade_in,
+                    "fade_out": fade_out,
+                }
             )
-        # Return the user settings if there was no breaks
-        return {
-            "speed_factor": speed_factor,
-            "clip_in": clip_in,
-            "clip_out": clip_out,
-            "clip_from_end": clip_from_end,
-            "fade_in": fade_in,
-            "fade_out": fade_out,
-        }
+            # Ask if we want to make multiple clips from the video
+            wanted_more = getIntBool(
+                "Do you want to make another modification to this file: Yes [0] or No [1]?\n"
+            )
+            if wanted_more == 0:
+                wanted_more = True
+            elif wanted_more == 1:
+                wanted_more = False
+            # If we don't want to make another modification break from the while loop, if not do it again
+            if not wanted_more:
+                break  # Could just return in here instead, but oh well
+        # Return the response
+        return response
     # Return the default options (global)
     else:
         return userDefault(file_type)
@@ -2111,33 +2143,17 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
 
 # Function to create the video from the image
 def ImageVideo(
-    file: pathlib.Path, image_video: pathlib.Path, image_video_out: pathlib.Path
+    file: pathlib.Path,
+    resized_image: pathlib.Path,
+    image_video: pathlib.Path,
+    index: int,
 ) -> None:
-    # Creating a scaled version of the image
-    start = time.perf_counter()
-    resized_image = pathlib.Path.joinpath(
-        timelapse_args.temp_directory, f"{file.stem}_r{file.suffix}"
-    )
-    logger.info(f'Resizing the image "{file}" at "{resized_image}"')
-    # Compare the resolutions
-    c_resolution = getResolution(file)
-    if (
-        c_resolution[0] != timelapse_args.width
-        or c_resolution[1] != timelapse_args.height
-    ):
-        resize_terms = f'ffmpeg -i "{file}" -vf "{resize_vf}" "{resized_image}"'
-    else:
-        resize_terms = f'ffmpeg -i "{file}" "{resized_image}"'
-    runFFmpeg(resize_terms)
-    end = time.perf_counter()
-    duration = end - start
-    logger.info(f'Created the resized image "{resized_image}" after {duration} seconds')
     # Creating the concat file
     concat_image = pathlib.Path.joinpath(timelapse_args.temp_directory, "image.txt")
     logger.info(f'Creating the image concat file at "{concat_image}"')
     # The speed factor for images is how many seconds you want to image to last
     output_frames = int(
-        round(user_answers[file]["speed_factor"] * timelapse_args.output_fps, 0)
+        round(user_answers[file][index]["speed_factor"] * timelapse_args.output_fps, 0)
     )
     # Replace apostrophes in the file with the escape sequence ffmpeg needs
     # file_string = str(file.resolve().absolute())
@@ -2162,82 +2178,151 @@ def ImageVideo(
     end = time.perf_counter()
     duration = end - start
     logger.info(f'Created the video "{image_video}" after {duration} seconds')
-    # Deleting the resized image and concat file
-    delLog(
-        resized_image,
-        "Deleting the temporary resized image",
-        "Deleted the temporary resized image",
-    )
+    # Deleting the concat file
     delLog(
         concat_image,
         "Deleting the temporary image concat file",
         "Deleted the temporary image concat file",
     )
-    # Treat it like a regular video (without the speed factor as you should have put in the length you wanted it to be already)
-    # Create the new timelapse
+
+
+# Function to check if we're making a video from an image
+def logImageVideo(
+    file: pathlib.Path,
+    resized_image: pathlib.Path,
+    image_video: pathlib.Path,
+    index: int,
+) -> None:
+    logger.info(f'Creating the video for the image at "{file}"')
+    start = time.perf_counter()
+    ImageVideo(file, resized_image, image_video, index)
+    end = time.perf_counter()
+    duration = end - start
+    logger.info(
+        f'Successfully created the new video for the image at "{image_video}" after {duration} seconds'
+    )
+
+
+# Function to create the modified video from the image video
+def logModifiedImageVideo(
+    file: pathlib.Path,
+    image_video: pathlib.Path,
+    image_video_out: pathlib.Path,
+    index: int,
+) -> None:
     start = time.perf_counter()
     logger.info(f'Creating new timelapse of "{image_video}" at "{image_video_out}"')
     timelapseVideo(
         image_video,
+        image_video_out,
         0,
-        user_answers[file]["clip_in"],
-        user_answers[file]["clip_out"],
-        user_answers[file]["clip_from_end"],
-        user_answers[file]["fade_in"],
-        user_answers[file]["fade_out"],
+        user_answers[file][index]["clip_in"],
+        user_answers[file][index]["clip_out"],
+        user_answers[file][index]["clip_from_end"],
+        user_answers[file][index]["fade_in"],
+        user_answers[file][index]["fade_out"],
     )
     end = time.perf_counter()
     duration = end - start
     logger.info(
         f'Successfully created a timelapse of "{image_video}" after {duration} seconds'
     )
-    # Deleting the temporary video created from the image that was then treated like other videos
-    delLog(
-        image_video,
-        "Deleting the temporary image video",
-        "Deleted the temporary image video",
-    )
 
 
-# Function to check if we're making a video from an image
-def logImageVideo(
-    file: pathlib.Path, image_video: pathlib.Path, image_video_out: pathlib.Path
-) -> None:
-    logger.info(f'Creating the video for the image at "{file}"')
+# Function to check if resolution matches
+def checkResolution(file: pathlib.Path) -> bool:
+    c_resolution = getResolution(file)
+    if (
+        c_resolution[0] != timelapse_args.width
+        or c_resolution[1] != timelapse_args.height
+    ):
+        return False
+    else:
+        return True
+
+
+# Function to resize the image to the output size
+def resizeImage(file: pathlib.Path, resized_image: pathlib.Path) -> None:
+    # Creating a scaled version of the image
     start = time.perf_counter()
-    ImageVideo(file, image_video, image_video_out)
+    logger.info(f'Resizing the image "{file}" at "{resized_image}"')
+    # Compare the resolutions
+    matching_resolution = checkResolution(file)
+    if not matching_resolution:
+        resize_terms = f'ffmpeg -i "{file}" -vf "{resize_vf}" "{resized_image}"'
+    else:
+        resize_terms = f'ffmpeg -i "{file}" "{resized_image}"'
+    runFFmpeg(resize_terms)
     end = time.perf_counter()
     duration = end - start
-    logger.info(
-        f'Successfully created the new video for the image at "{image_video_out}" after {duration} seconds'
-    )
+    logger.info(f'Created the resized image "{resized_image}" after {duration} seconds')
 
 
 # Function to handle creating the videos from all the images
 def createImage(image_files: list) -> None:
     # Turn every video into a timelapse
     for image in image_files:
-        # Check if a version of it already exists
-        image_video = pathlib.Path.joinpath(
-            timelapse_args.audio_directory, f"{image.stem}.mp4"
-        )  # I don't really like that I'm making a temporary file in the source files, but it is what it is. I'll make it in the audio directory instead so you can tell if it shouldn't be there.
-        image_video_out = pathlib.Path.joinpath(
-            timelapse_args.temp_directory, f"{image.stem}.mp4"
+        # Modifying the image
+        resized_image = pathlib.Path.joinpath(
+            timelapse_args.temp_directory, f"{image.stem}_r{image.suffix}"
         )
-        if checkPath(image_video_out):
-            # Delete the existing file if that setting is enabled
-            if timelapse_args.override_temp_video:
-                delLog(
-                    image_video_out,
-                    "Deleting existing temp video created from image",
-                    "Deleted existing temp video created from image",
-                )
+        resizeImage(image, resized_image)
+        # Creating the modified versions
+        image_settings = user_answers[image]
+        # For every clip we're making for that file
+        # for index, clips in enumerate(video_settings):
+        for index in range(len(image_settings)):
+            # Check if a version of it already exists
+            image_video = pathlib.Path.joinpath(
+                timelapse_args.temp_directory, f"{image.stem}.mp4"
+            )
+            # Creating the base video of the image
+            if checkPath(image_video):
+                # Delete the existing file if that setting is enabled
+                if timelapse_args.override_temp_video:
+                    delLog(
+                        image_video,
+                        "Deleting existing temp video created from image",
+                        "Deleted existing temp video created from image",
+                    )
+                    # Create the new timelapse
+                    logImageVideo(image, resized_image, image_video, index)
+            # If the file doesn't exist just create it
+            else:
                 # Create the new timelapse
-                logImageVideo(image, image_video, image_video_out)
-        # If the file doesn't exist just create it
-        else:
-            # Create the new timelapse
-            logImageVideo(image, image_video, image_video_out)
+                logImageVideo(image, resized_image, image_video, index)
+
+            # Creating the new output
+            output = pathlib.Path.joinpath(
+                timelapse_args.temp_directory, f"{image.stem}_{index}.mp4"
+            )
+            # Check if a timelapse already exists
+            if checkPath(output):
+                # Delete the existing file if that setting is enabled
+                if timelapse_args.override_temp_video:
+                    delLog(
+                        output,
+                        "Deleting existing temp video created from image",
+                        "Deleted existing temp video created from image",
+                    )
+                    # Create the new timelapse
+                    logModifiedImageVideo(image, image_video, output, index)
+            # If the file doesn't exist just create it
+            else:
+                # Create the new timelapse
+                logModifiedImageVideo(image, image_video, output, index)
+        # Deleting the temporary video
+        delLog(
+            image_video,
+            "Deleting the temporary image video",
+            "Deleted the temporary image video",
+        )
+        # Deleting the resized image and concat file
+        delLog(
+            resized_image,
+            "Deleting the temporary resized image",
+            "Deleted the temporary resized image",
+        )
         # Delete the source image file if that setting is enabled
         if timelapse_args.delete_video:
             delLog(image, "Deleting existing image", "Deleted existing image")
