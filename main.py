@@ -16,7 +16,7 @@ import subprocess
 import sys
 import argparse
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import time
 import json
 import datetime
@@ -84,6 +84,10 @@ class userArguments:
         width,
         height,
         use_custom_order,
+        override_custom_order,
+        clear_custom_order,
+        delete_custom_order,
+        dont_save_custom_order,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -139,6 +143,10 @@ class userArguments:
         self.width = width
         self.height = height
         self.use_custom_order = use_custom_order
+        self.override_custom_order = override_custom_order
+        self.clear_custom_order = clear_custom_order
+        self.delete_custom_order = delete_custom_order
+        self.dont_save_custom_order = dont_save_custom_order
 
 
 # Function to make sure passed paths exist
@@ -241,6 +249,10 @@ def getPaths() -> userArguments:
     preserve_audio = cli_args.preserve_audio
     dont_save_settings = cli_args.dont_save_settings
     use_custom_order = cli_args.use_custom_order
+    override_custom_order = cli_args.override_custom_order
+    clear_custom_order = cli_args.clear_custom_order
+    delete_custom_order = cli_args.delete_custom_order
+    dont_save_custom_order = cli_args.dont_save_custom_order
 
     # Validating other inputs
     if cli_args.output_fps > 0:
@@ -479,6 +491,10 @@ def getPaths() -> userArguments:
         width,
         height,
         use_custom_order,
+        override_custom_order,
+        clear_custom_order,
+        delete_custom_order,
+        dont_save_custom_order,
     )
 
 
@@ -498,7 +514,11 @@ def getFiles(search_path: pathlib.Path, file_names: List[str]) -> list:
 
 
 # Function to create the concat file for ffmpeg
-def concatFile(files: List[pathlib.Path], output: pathlib.Path, utype: bool) -> None:
+def concatFile(
+    files_d: Dict[int, pathlib.Path], output: pathlib.Path, utype: bool
+) -> None:
+    # Grab just the values from the dict
+    files = files_d.values()
     # What type of file it is and randomizing if needed
     if utype:
         ustr = "video"
@@ -988,7 +1008,7 @@ def logCombineTimelapse(concat_file: pathlib.Path, output_file: pathlib.Path) ->
 # Function to create the combined video timelapse
 def createCombinedTimelapse(video_files: list):
     concat_video = pathlib.Path.joinpath(timelapse_args.temp_directory, "video.txt")
-    concatFile(video_files, concat_video, True)
+    concatFile(video_order, concat_video, True)
     # Check if a output timelapse already exists
     output = pathlib.Path.joinpath(timelapse_args.output_directory, "timelapse.mp4")
     if checkPath(output):
@@ -1402,7 +1422,7 @@ def createCombinedAudio(audio_files: list):
     # Path for the outputted merged audio
     audio_out = pathlib.Path.joinpath(timelapse_args.output_directory, "audio.wav")
     # Creating the concat file
-    concatFile(audio_files, audio_concat, False)
+    concatFile(audio_order, audio_concat, False)
     # Check if a output audio already exists
     if checkPath(audio_out):
         # Delete the existing output audio file if that setting is enabled
@@ -2805,6 +2825,30 @@ parser.add_argument(
     help="If you want to use a custom order for the files to be combined",
     action="store_true",
 )
+parser.add_argument(
+    "-oco",
+    "--override_custom_order",
+    help="If you're going to change the custom order with a prompt. If the files aren't the exact same you will have to override the file regardless.",
+    action="store_true",
+)
+parser.add_argument(
+    "-cco",
+    "--clear_custom_order",
+    help="Deletes the existing custom order before creating new settings if passed",
+    action="store_true",
+)
+parser.add_argument(
+    "-dco",
+    "--delete_custom_order",
+    help="Deletes the custom order file if passed",
+    action="store_true",
+)
+parser.add_argument(
+    "-dsco",
+    "--dont_save_custom_order",
+    help="Doesn't save the custom order if passed",
+    action="store_false",
+)
 
 # Get the command line arguments
 cli_args = parser.parse_args()
@@ -2865,15 +2909,23 @@ if timelapse_args.clear_temp_video:
         )
     logger.info(f"Deleted all the existing temp videos")
 if timelapse_args.clear_settings:
-    setting_files = getFiles(timelapse_args.settings_directory, [".json"])
-    logger.info(f"Deleting all the existing settings")
-    for file in setting_files:
-        delLog(
-            file,
-            "Deleting the existing settings at",
-            "Deleted the existing settings at",
-        )
-    logger.info(f"Deleted all the existing settings")
+    setting_file = getFiles(timelapse_args.settings_directory, "settings.json")
+    logger.info(f"Deleting the existing settings")
+    delLog(
+        setting_file,
+        "Deleting the existing settings at",
+        "Deleted the existing settings at",
+    )
+    logger.info(f"Deleted the existing settings")
+if timelapse_args.clear_custom_order:
+    custom_order_file = getFiles(timelapse_args.settings_directory, "order.json")
+    logger.info(f"Deleting the existing custom order")
+    delLog(
+        custom_order_file,
+        "Deleting the existing custom order at",
+        "Deleted the existing custom order at",
+    )
+    logger.info(f"Deleted the existing custom order")
 
 # Get the files
 video_files = getFiles(timelapse_args.video_directory, [".mp4", ".mkv"])
@@ -2901,18 +2953,43 @@ user_answers = promptFiles(video_files, timelapse_video_files, "video", user_ans
 user_answers = promptFiles(audio_files, timelapse_audio_files, "audio", user_answers)
 user_answers = promptFiles(image_files, timelapse_video_files, "image", user_answers)
 
+#### Add a function to remove files from the settings that don't exist in the source directories
+
+# If using custom order attempt to load them (Will need to have this split the json file into video and audio) ######## NOTE
+order_file = pathlib.Path.joinpath(timelapse_args.settings_directory, "order.json")
+if timelapse_args.use_custom_order and checkPath(order_file):
+    try:
+        custom_order = loadJson(order_file)
+        logger.info(f"Loaded the custom order from {order_file}")
+    except:
+        custom_order = {}
+        logger.warning(f"Custom order file {order_file} is invalid and will be ignored")
+else:
+    custom_order = {}
+
+### Add a function that removes files from the custom order that don't exist in the settings
+
 # Get the user to tell us the order of the files
 video_order, audio_order = promptOrder(user_answers)
 
 # If the user is using a custom order ask them (if not just leave it as the default order)
-if timelapse_args.use_custom_order:
-    video_order, audio_order = userOrder(video_order, audio_order, True)
+if timelapse_args.use_custom_order and timelapse_args.prompt:
+    # If we're overriding the custom order ask
+    if timelapse_args.override_custom_order:
+        video_order, audio_order = userOrder(video_order, audio_order, True)
+    ##elif: Some kind of check to see if all the files in the output are in the file already or not
+    else:
+        video_order, audio_order = userOrder(video_order, audio_order, False)
 else:
     video_order, audio_order = userOrder(video_order, audio_order, False)
 
 # Save the settings
 if timelapse_args.dont_save_settings:
     writeJson(json_file, user_answers)
+if timelapse_args.dont_save_custom_order:
+    writeJson(
+        order_file, custom_order
+    )  ##### Will need to have this be a combination of the video and audio orders
 
 # If there are videos
 if len(video_files) != 0:
@@ -2986,11 +3063,22 @@ if timelapse_args.delete_settings:
         "Deleting the settings at",
         "Deleted the settings at",
     )
+# Delete the custom order if passed
+if timelapse_args.delete_custom_order:
+    delLog(
+        order_file,
+        "Deleting the custom order at",
+        "Deleted the custom order at",
+    )
+# Delete the settings directory if both are true
+if timelapse_args.delete_settings and timelapse_args.delete_custom_order:
     delLog(
         timelapse_args.settings_directory,
         "Deleting the settings directory ",
         "Deleted the settings directory ",
     )
+
+
 # Deleting the temp directory if both temp audio and video have been removed
 if not timelapse_args.keep_temp_video and not timelapse_args.keep_temp_audio:
     delLog(
