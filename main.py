@@ -83,6 +83,7 @@ class userArguments:
         dont_save_settings,
         width,
         height,
+        use_custom_order,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -137,6 +138,7 @@ class userArguments:
         self.dont_save_settings = dont_save_settings
         self.width = width
         self.height = height
+        self.use_custom_order = use_custom_order
 
 
 # Function to make sure passed paths exist
@@ -238,6 +240,7 @@ def getPaths() -> userArguments:
     override_source_path = cli_args.override_source_path
     preserve_audio = cli_args.preserve_audio
     dont_save_settings = cli_args.dont_save_settings
+    use_custom_order = cli_args.use_custom_order
 
     # Validating other inputs
     if cli_args.output_fps > 0:
@@ -475,6 +478,7 @@ def getPaths() -> userArguments:
         dont_save_settings,
         width,
         height,
+        use_custom_order,
     )
 
 
@@ -1582,7 +1586,7 @@ def userDefault(file_type: bool) -> List[dict]:
         clip_out = timelapse_args.video_clip_out
         fade_in = timelapse_args.video_fade_in
         fade_out = timelapse_args.video_fade_out
-    elif file_type == "image":
+    elif file_type == "audio":
         speed_factor = timelapse_args.audio_speed_factor
         clip_in = timelapse_args.audio_clip_in
         clip_out = timelapse_args.audio_clip_out
@@ -1615,7 +1619,9 @@ def promptUser(file: pathlib.Path, file_type: str) -> dict:
 
 
 # Function to get which files to ask the user about
-def promptFiles(files: dict, temp_files: list, file_type: str, current_answers: dict) -> dict:
+def promptFiles(
+    files: dict, temp_files: list, file_type: str, current_answers: dict
+) -> dict:
     # For every file passed in
     for file in files:
         # If we're using settings
@@ -1689,6 +1695,119 @@ def promptFiles(files: dict, temp_files: list, file_type: str, current_answers: 
     return current_answers
 
 
+# Function to get the default order
+def defaultOrder(file_list: dict) -> dict:
+    # # Sorted Method (List)
+    # # Get the unsorted list from the dict keys
+    # unsorted_list = list(file_list.keys())
+    # # Sorting the list by the file name (could do stem too)
+    # sorted_list = sorted(unsorted_list, key=lambda x: x.name)
+    # return sorted_list
+
+    # # Sort Method (List [in place])
+    # listed_file = list(file_list.keys())
+    # listed_file.sort(key=lambda x: x.name)
+    # return listed_file
+
+    # Dictionary Method
+    listed_file = list(file_list.keys())
+    listed_file.sort(key=lambda x: x.name)
+    sorted_dict = {}
+    for item in listed_file:
+        sorted_dict[item] = file_list[item]
+    return sorted_dict
+
+
+# Function to ask the user about the order
+def userOrder(
+    video_list: dict, audio_list: dict, user_prompt: bool
+) -> Tuple[dict, dict]:
+    # Variables to store the results
+    video_order = {}
+    audio_order = {}
+    # Amount of clips
+    video_len = len(video_list)
+    audio_len = len(audio_list)
+    # Getting the user responses
+    video_options = [x for x in range(1, video_len + 1)]
+    for video, source in video_list.items():
+        # If we're getting responses from the user
+        if user_prompt:
+            # Using 1 to start instead of 0 because I think that makes more sense for non-programmer nerds
+            response = getPosition(
+                f'What position would you like the file "{video.name}" from "{source.name}" to be in?\nThe options are {", ".join(map(str,video_options))}, or 0 for the next position\n',
+                video_options,
+            )
+            if response != 0:
+                video_order[response] = video
+                video_options.remove(response)
+            else:
+                video_order[video_options[0]] = video
+                video_options.remove(video_options[0])
+        # If we're just getting the default order
+        else:
+            video_order[video_options[0]] = video
+            video_options.remove(video_options[0])
+    # Repeated code, but it is what it is. Don't want to make another function right now.
+    audio_options = [x for x in range(1, audio_len + 1)]
+    for audio, source in audio_list.items():
+        # If we're getting responses from the user
+        if user_prompt:
+            # Using 1 to start instead of 0 because I think that makes more sense for non-programmer nerds
+            response = getPosition(
+                f'What position would you like the file "{audio.name}" from "{audio.name}" to be in?\nThe options are {", ".join(map(str,audio_options))}, or 0 for the next position\n',
+                audio_options,
+            )
+            if response != 0:
+                audio_order[response] = audio
+                audio_options.remove(response)
+            else:
+                audio_order[audio_options[0]] = audio
+                audio_options.remove(audio_options[0])
+        # If we're just getting the default order
+        else:
+            audio_order[audio_options[0]] = audio
+            audio_options.remove(audio_options[0])
+    # Sort the results (we shouldn't need to if the user didn't customize them)
+    if user_prompt:
+        video_order = dict(sorted(video_order.items()))
+        audio_order = dict(sorted(audio_order.items()))
+    # Return the results
+    return video_order, audio_order
+
+
+# Function to determine if we ask the user for a specific order
+def promptOrder(user_answers: dict) -> Tuple[dict, dict]:
+    # Variables to store them
+    video_order = {}  # and converted images
+    audio_order = {}
+    # Get all of the files and their clips
+    for file, data in user_answers.items():
+        # Get the amount of clips
+        for index in range(len(data)):
+            # Generate paths
+            if file.suffix.lower() in [".mp4", ".mkv"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
+                )
+                video_order[new_path] = file
+            elif file.suffix.lower() in [".png", ".jpg"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}.mp4"
+                )
+                video_order[new_path] = file
+            elif file.suffix.lower() in [".wav", ".mp3"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
+                )
+                audio_order[new_path] = file
+    # Get the sorted orders
+    video_order = defaultOrder(video_order)
+    audio_order = defaultOrder(audio_order)
+    # Return the values
+    return (video_order, audio_order)
+
+
 # Function to get a int (bool) from the user
 def getIntBool(question: str) -> float:
     while True:
@@ -1703,6 +1822,26 @@ def getIntBool(question: str) -> float:
             sys.exit()
         except ValueError:
             print("That is an invalid input. Must be a 0 or 1")
+
+
+# Function to get a int from the user
+def getPosition(question: str, options: List[int]) -> int:
+    while True:
+        try:
+            response = int(input(question))
+            if response in options or response == 0:
+                return response
+            else:
+                print(
+                    f'That is an invalid input. Must be in {", ".join(map(str,options))}, or 0 for the next position'
+                )
+        except KeyboardInterrupt:
+            print("bye bye")
+            sys.exit()
+        except ValueError:
+            print(
+                f'That is an invalid input. Must be in {", ".join(map(str,options))}, or 0 for the next position'
+            )
 
 
 # Function to get a float from the user
@@ -2561,13 +2700,13 @@ parser.add_argument(
 parser.add_argument(
     "-us",
     "--use_settings",
-    help="If we're using any saved settings",
+    help="If you're using any saved settings",
     action="store_true",
 )
 parser.add_argument(
     "-os",
     "--override_settings",
-    help="If we're going to change the settings with a prompt",
+    help="If you're going to change the settings with a prompt",
     action="store_true",
 )
 parser.add_argument(
@@ -2659,6 +2798,12 @@ parser.add_argument(
 )
 parser.add_argument(
     "-he", "--height", help="The desired output height", type=int, default=1080
+)
+parser.add_argument(
+    "-uco",
+    "--use_custom_order",
+    help="If you want to use a custom order for the files to be combined",
+    action="store_true",
 )
 
 # Get the command line arguments
@@ -2755,6 +2900,15 @@ else:
 user_answers = promptFiles(video_files, timelapse_video_files, "video", user_answers)
 user_answers = promptFiles(audio_files, timelapse_audio_files, "audio", user_answers)
 user_answers = promptFiles(image_files, timelapse_video_files, "image", user_answers)
+
+# Get the user to tell us the order of the files
+video_order, audio_order = promptOrder(user_answers)
+
+# If the user is using a custom order ask them (if not just leave it as the default order)
+if timelapse_args.use_custom_order:
+    video_order, audio_order = userOrder(video_order, audio_order, True)
+else:
+    video_order, audio_order = userOrder(video_order, audio_order, False)
 
 # Save the settings
 if timelapse_args.dont_save_settings:
