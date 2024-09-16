@@ -16,7 +16,7 @@ import subprocess
 import sys
 import argparse
 import logging
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Union
 import time
 import json
 import datetime
@@ -1715,7 +1715,7 @@ def promptFiles(
     return current_answers
 
 
-# Function to get the default order
+# Function to get the default order (sort the dictionaries)
 def defaultOrder(file_list: dict) -> dict:
     # # Sorted Method (List)
     # # Get the unsorted list from the dict keys
@@ -2050,62 +2050,91 @@ def modifyOutput(input_path: pathlib.Path, file_type: bool) -> None:
 
 
 # Function to read json of the userSetting
-def loadJson(file: pathlib.Path) -> dict:
+def loadJson(file: pathlib.Path, file_type: bool) -> dict:
     with open(file, "r") as json_file:
         data = json.load(json_file)
     # Turn the strings into paths
-    new_data = convertFromJson(data)
+    new_data = convertFromJson(data, file_type)
     # Replacing the paths if the setting is enabled
     if timelapse_args.override_source_path:
         repathed_data = {}
-        for path, settings in new_data.items():
-            # Getting the relative path by basically removing everything before the parent directory
-            source_path = path.relative_to(str(path.parent.parent))
-            # Getting the file type (video or audio)
-            file_type = str(source_path.parent)
-            # Creating the new path
-            if file_type == "video":
-                new_path = pathlib.Path.joinpath(
-                    timelapse_args.video_directory, path.name
-                )
-            elif file_type == "audio":
-                new_path = pathlib.Path.joinpath(
-                    timelapse_args.audio_directory, path.name
-                )
-            else:
-                logger.warning(
-                    f'The file "{path}" in the settings wasn\'t a video or audio file and has been ignored when repathing.'
-                )
-                continue
-            repathed_data[new_path] = settings
-        # Return the repathed data
+        # Repathing for the settings file
+        if file_type:
+            for path, settings in new_data.items():
+                # Getting the relative path by basically removing everything before the parent directory
+                source_path = path.relative_to(str(path.parent.parent))
+                # Getting the file type (video or audio)
+                file_type = str(source_path.parent)
+                # Creating the new path
+                if file_type == "video":
+                    new_path = pathlib.Path.joinpath(
+                        timelapse_args.video_directory, path.name
+                    )
+                elif file_type == "audio":
+                    new_path = pathlib.Path.joinpath(
+                        timelapse_args.audio_directory, path.name
+                    )
+                else:
+                    logger.warning(
+                        f'The file "{path}" in the settings wasn\'t a video or audio file and has been ignored when repathing.'
+                    )
+                    continue
+                repathed_data[new_path] = settings
+        # Repathing for the order file
+        else:
+            for category in new_data:
+                repathed_data[category] = {}
+                for order, path in new_data[category].items():
+                    new_path = pathlib.Path.joinpath(
+                        timelapse_args.temp_directory, path.name
+                    )
+                    repathed_data[category][order] = new_path
+            # Return the repathed data
         return repathed_data
     # If we're not replacing the paths just return the loaded data
     return new_data
 
 
 # Function to transform all the strings from the settings into paths
-def convertFromJson(settings: dict) -> dict:
+def convertFromJson(settings: dict, file_type: bool) -> dict:
     new_dict = {}
-    for path, settings in settings.items():
-        new_path = pathlib.Path(path)
-        new_dict[new_path] = settings
+    # Conversion for settings
+    if file_type:
+        for path, settings in settings.items():
+            new_path = pathlib.Path(path)
+            new_dict[new_path] = settings
+    # Conversion for order
+    else:
+        for category in settings:
+            new_dict[category] = {}
+            for order, path in settings[category].items():
+                new_path = pathlib.Path(path)
+                new_dict[category][order] = new_path
     return new_dict
 
 
 # Function to transform all the paths in the settings into strings
-def convertToJson(settings: dict) -> dict:
+def convertToJson(settings: dict, file_type: bool) -> dict:
     new_dict = {}
-    for path, settings in settings.items():
-        new_path = str(path.resolve())
-        new_dict[new_path] = settings
+    # Conversion for settings
+    if file_type:
+        for path, settings in settings.items():
+            new_path = str(path.resolve())
+            new_dict[new_path] = settings
+    # Conversion for order
+    else:
+        for category in settings:
+            new_dict[category] = {}
+            for order, path in settings[category].items():
+                new_path = str(path.resolve())
+                new_dict[category][order] = new_path
     return new_dict
 
 
 # Function to write json of the userSetting
-def writeJson(file: pathlib.Path, userSettings: dict) -> None:
+def writeJson(file: pathlib.Path, userSettings: dict, file_type: bool) -> None:
     # Transform the paths into strings
-    write_dict = convertToJson(userSettings)
+    write_dict = convertToJson(userSettings, file_type)
     with open(file, "w+") as json_file:
         json_dump = json.dumps(write_dict, indent=4)
         json_file.write(json_dump)
@@ -2485,6 +2514,96 @@ def createImage(image_files: list) -> None:
         # Delete the source image file if that setting is enabled
         if timelapse_args.delete_video:
             delLog(image, "Deleting existing image", "Deleted existing image")
+
+
+# Function to check if the files exist in the settings
+def checkSettings(
+    videos: List[pathlib.Path],
+    images: List[pathlib.Path],
+    audio: List[pathlib.Path],
+    settings: dict,
+) -> Dict[pathlib.Path, Dict[str, Union[float, int, bool]]]:
+    # Combine all the source files
+    source_files = videos + images + audio
+    # Creating a new settings dictionary
+    settings_dict = {}
+    # Creating a new settings dictionary that only has values for existing source files
+    for c_key, c_value in settings.items():
+        if c_key in source_files:
+            settings_dict[c_key] = c_value
+    return settings_dict
+
+
+# Function to determine if the custom order contains all the existing files (and only the existing files)
+def checkOrder(custom_order: dict, user_answers: dict) -> bool:
+    # Variables to store the paths
+    video = {}  # and converted images
+    audio = {}
+    # Get all of the files and their clips from the settings
+    for file, data in user_answers.items():
+        # Get the amount of clips
+        for index in range(len(data)):
+            # Generate paths
+            if file.suffix.lower() in [".mp4", ".mkv"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
+                )
+                video[new_path] = file
+            elif file.suffix.lower() in [".png", ".jpg"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}.mp4"
+                )
+                video[new_path] = file
+            elif file.suffix.lower() in [".wav", ".mp3"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
+                )
+                audio[new_path] = file
+    # Checking if the custom order contains only (and all) clips from the settings
+    video = set(video.keys()) == set(custom_order["video"].values())
+    audio = set(audio.keys()) == set(custom_order["audio"].values())
+    # Return true if both video and audio are matching
+    ######## I can maybe make this so that it'll only make you renter which one is wrong
+    if video and audio:
+        return True
+    else:
+        return False
+
+
+# Function to determine if the custom order contains all the existing files (and only the existing files)
+def checkOrder2(custom_order: dict, user_answers: dict) -> Tuple[dict, dict]:
+    # Variables to store them
+    for x in custom_order:
+        print(x)
+    input()
+
+    video_order = {}  # and converted images
+    audio_order = {}
+    # Get all of the files and their clips
+    for file, data in user_answers.items():
+        # Get the amount of clips
+        for index in range(len(data)):
+            # Generate paths
+            if file.suffix.lower() in [".mp4", ".mkv"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
+                )
+                video_order[new_path] = file
+            elif file.suffix.lower() in [".png", ".jpg"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}.mp4"
+                )
+                video_order[new_path] = file
+            elif file.suffix.lower() in [".wav", ".mp3"]:
+                new_path = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
+                )
+                audio_order[new_path] = file
+    # Get the sorted orders
+    video_order = defaultOrder(video_order)
+    audio_order = defaultOrder(audio_order)
+    # Return the values
+    return (video_order, audio_order)
 
 
 # Command line arguments
@@ -2940,7 +3059,7 @@ timelapse_audio_files = getFiles(timelapse_args.temp_directory, [".wav", ".mp3"]
 json_file = pathlib.Path.joinpath(timelapse_args.settings_directory, "settings.json")
 if timelapse_args.use_settings and checkPath(json_file):
     try:
-        user_answers = loadJson(json_file)
+        user_answers = loadJson(json_file, True)
         logger.info(f"Loaded settings from {json_file}")
     except:
         user_answers = {}
@@ -2948,47 +3067,70 @@ if timelapse_args.use_settings and checkPath(json_file):
 else:
     user_answers = {}
 
+# Checking and removing files from the settings that aren't in the source folders
+user_answers = checkSettings(video_files, image_files, audio_files, user_answers)
+
 # Get the user settings
 user_answers = promptFiles(video_files, timelapse_video_files, "video", user_answers)
 user_answers = promptFiles(audio_files, timelapse_audio_files, "audio", user_answers)
 user_answers = promptFiles(image_files, timelapse_video_files, "image", user_answers)
 
-#### Add a function to remove files from the settings that don't exist in the source directories
+#### Add a function to check the settings and alert the user if the audio isn't longer than the video!
 
 # If using custom order attempt to load them (Will need to have this split the json file into video and audio) ######## NOTE
 order_file = pathlib.Path.joinpath(timelapse_args.settings_directory, "order.json")
 if timelapse_args.use_custom_order and checkPath(order_file):
     try:
-        custom_order = loadJson(order_file)
+        custom_order = loadJson(order_file, False)
         logger.info(f"Loaded the custom order from {order_file}")
     except:
-        custom_order = {}
+        custom_order = {"video": {}, "audio": {}}
         logger.warning(f"Custom order file {order_file} is invalid and will be ignored")
 else:
-    custom_order = {}
+    custom_order = {"video": {}, "audio": {}}
 
-### Add a function that removes files from the custom order that don't exist in the settings
-
-# Get the user to tell us the order of the files
-video_order, audio_order = promptOrder(user_answers)
-
-# If the user is using a custom order ask them (if not just leave it as the default order)
-if timelapse_args.use_custom_order and timelapse_args.prompt:
-    # If we're overriding the custom order ask
-    if timelapse_args.override_custom_order:
-        video_order, audio_order = userOrder(video_order, audio_order, True)
-    ##elif: Some kind of check to see if all the files in the output are in the file already or not
+# If we're using a custom order
+if timelapse_args.use_custom_order:
+    # If we're prompted
+    if timelapse_args.prompt:
+        # If we're overriding the custom order regardless ask them for their order
+        if timelapse_args.override_custom_order:
+            video_order, audio_order = promptOrder(user_answers)
+            video_order, audio_order = userOrder(video_order, audio_order, True)
+        # If we're not overriding check that the loaded order only has the paths from the settings
+        elif checkOrder(custom_order, user_answers):
+            # Use the loaded order
+            video_order = custom_order["video"]
+            audio_order = custom_order["audio"]
+        # If it doesn't (or has other files) get the default and prompt the user
+        else:
+            video_order, audio_order = promptOrder(user_answers)
+            video_order, audio_order = userOrder(video_order, audio_order, True)
+    # If we aren't prompted
     else:
-        video_order, audio_order = userOrder(video_order, audio_order, False)
+        # Check that the loaded order only has the paths from the settings
+        if checkOrder(custom_order, user_answers):
+            # Use the loaded order
+            video_order = custom_order["video"]
+            audio_order = custom_order["audio"]
+        # If it doesn't (or has other files) get the default
+        else:
+            video_order, audio_order = promptOrder(user_answers)
+            video_order, audio_order = userOrder(video_order, audio_order, False)
+# If we're not using a custom order get the default order
 else:
+    video_order, audio_order = promptOrder(user_answers)
     video_order, audio_order = userOrder(video_order, audio_order, False)
+
+# Create combined custom order for saving
+custom_order = {"video": video_order, "audio": audio_order}
 
 # Save the settings
 if timelapse_args.dont_save_settings:
-    writeJson(json_file, user_answers)
+    writeJson(json_file, user_answers, True)
 if timelapse_args.dont_save_custom_order:
     writeJson(
-        order_file, custom_order
+        order_file, custom_order, False
     )  ##### Will need to have this be a combination of the video and audio orders
 
 # If there are videos
