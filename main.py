@@ -2570,42 +2570,6 @@ def checkOrder(custom_order: dict, user_answers: dict) -> bool:
         return False
 
 
-# Function to determine if the custom order contains all the existing files (and only the existing files)
-def checkOrder2(custom_order: dict, user_answers: dict) -> Tuple[dict, dict]:
-    # Variables to store them
-    for x in custom_order:
-        print(x)
-    input()
-
-    video_order = {}  # and converted images
-    audio_order = {}
-    # Get all of the files and their clips
-    for file, data in user_answers.items():
-        # Get the amount of clips
-        for index in range(len(data)):
-            # Generate paths
-            if file.suffix.lower() in [".mp4", ".mkv"]:
-                new_path = pathlib.Path.joinpath(
-                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
-                )
-                video_order[new_path] = file
-            elif file.suffix.lower() in [".png", ".jpg"]:
-                new_path = pathlib.Path.joinpath(
-                    timelapse_args.temp_directory, f"{file.stem}_{index}.mp4"
-                )
-                video_order[new_path] = file
-            elif file.suffix.lower() in [".wav", ".mp3"]:
-                new_path = pathlib.Path.joinpath(
-                    timelapse_args.temp_directory, f"{file.stem}_{index}{file.suffix}"
-                )
-                audio_order[new_path] = file
-    # Get the sorted orders
-    video_order = defaultOrder(video_order)
-    audio_order = defaultOrder(audio_order)
-    # Return the values
-    return (video_order, audio_order)
-
-
 # Command line arguments
 parser = argparse.ArgumentParser(
     prog="Timelapse Maker",
@@ -3077,7 +3041,7 @@ user_answers = promptFiles(image_files, timelapse_video_files, "image", user_ans
 
 #### Add a function to check the settings and alert the user if the audio isn't longer than the video!
 
-# If using custom order attempt to load them (Will need to have this split the json file into video and audio) ######## NOTE
+# If using custom order attempt to load them
 order_file = pathlib.Path.joinpath(timelapse_args.settings_directory, "order.json")
 if timelapse_args.use_custom_order and checkPath(order_file):
     try:
@@ -3122,16 +3086,11 @@ else:
     video_order, audio_order = promptOrder(user_answers)
     video_order, audio_order = userOrder(video_order, audio_order, False)
 
-# Create combined custom order for saving
-custom_order = {"video": video_order, "audio": audio_order}
-
-# Save the settings
+# Save the settings and custom order
 if timelapse_args.dont_save_settings:
     writeJson(json_file, user_answers, True)
 if timelapse_args.dont_save_custom_order:
-    writeJson(
-        order_file, custom_order, False
-    )  ##### Will need to have this be a combination of the video and audio orders
+    writeJson(order_file, {"video": video_order, "audio": audio_order}, False)
 
 # If there are videos
 if len(video_files) != 0:
