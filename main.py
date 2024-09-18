@@ -1896,6 +1896,33 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
             video_audio_terms = (
                 f'ffmpeg -i "{video_path}" -i "{audio_path}" -vf "{resize_vf}" '
             )
+            # If the audio was supposed to have a faded output do it here too.
+            # The output fade for the video will work because it is longer, but since the audio is longer
+            # the output fade out will be clipped unless it's the exact same length as the video.
+            if (
+                timelapse_args.output_audio_fade_in != 0
+                or timelapse_args.output_audio_fade_out != 0
+            ):
+                fade_duration = getFadeTime(
+                    video_path,
+                    timelapse_args.output_audio_fade_in,
+                    timelapse_args.output_audio_fade_out,
+                )
+                video_audio_terms += f'-af "'
+                # Add the fade in if there is one
+                if fade_duration["fade_in_l"] != 0:
+                    video_audio_terms += (
+                        f'afade=t=in:st=0:d={fade_duration["fade_in_l"]},'
+                    )
+                # Add the fade out if there is one
+                if fade_duration["fade_out_l"] != 0:
+                    video_audio_terms += f'afade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}" '
+                # If there isn't a fade out replace the comma with a double quote
+                else:
+                    video_audio_terms = video_audio_terms[:-1]
+                    video_audio_terms += f'" '
+                # I think I need to add this because of the fade, but don't need to add the codec to video since it's not modified
+                video_audio_terms += f"-c:a mp3 "
             # Add the threads
             if timelapse_args.threads != -1:
                 video_audio_terms += f"-threads {timelapse_args.threads} "
@@ -1917,6 +1944,29 @@ def addAudio(video_path: pathlib.Path, audio_path: pathlib.Path) -> None:
         video_audio_terms = (
             f'ffmpeg -i "{video_path}" -i "{audio_path}" -vf "{resize_vf}" '
         )
+        # Copied code from above
+        if (
+            timelapse_args.output_audio_fade_in != 0
+            or timelapse_args.output_audio_fade_out != 0
+        ):
+            fade_duration = getFadeTime(
+                video_path,
+                timelapse_args.output_audio_fade_in,
+                timelapse_args.output_audio_fade_out,
+            )
+            video_audio_terms += f'-af "'
+            # Add the fade in if there is one
+            if fade_duration["fade_in_l"] != 0:
+                video_audio_terms += f'afade=t=in:st=0:d={fade_duration["fade_in_l"]},'
+            # Add the fade out if there is one
+            if fade_duration["fade_out_l"] != 0:
+                video_audio_terms += f'afade=t=out:st={fade_duration["fade_out_s"]}:d={fade_duration["fade_out_l"]}" '
+            # If there isn't a fade out replace the comma with a double quote
+            else:
+                video_audio_terms = video_audio_terms[:-1]
+                video_audio_terms += f'" '
+            # I think I need to add this because of the fade, but don't need to add the codec to video since it's not modified
+            video_audio_terms += f"-c:a mp3 "
         # Add the threads
         if timelapse_args.threads != -1:
             video_audio_terms += f"-threads {timelapse_args.threads} "
