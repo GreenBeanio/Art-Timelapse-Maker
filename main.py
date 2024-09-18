@@ -1746,52 +1746,9 @@ def defaultOrder(file_list: dict) -> dict:
 def userOrder(
     video_list: dict, audio_list: dict, user_prompt: bool
 ) -> Tuple[dict, dict]:
-    # Variables to store the results
-    video_order = {}
-    audio_order = {}
-    # Amount of clips
-    video_len = len(video_list)
-    audio_len = len(audio_list)
-    # Getting the user responses
-    video_options = [x for x in range(1, video_len + 1)]
-    for video, source in video_list.items():
-        # If we're getting responses from the user
-        if user_prompt:
-            # Using 1 to start instead of 0 because I think that makes more sense for non-programmer nerds
-            response = getPosition(
-                f'What position would you like the file "{video.name}" from "{source.name}" to be in?\nThe options are {", ".join(map(str,video_options))}, or 0 for the next position\n',
-                video_options,
-            )
-            if response != 0:
-                video_order[response] = video
-                video_options.remove(response)
-            else:
-                video_order[video_options[0]] = video
-                video_options.remove(video_options[0])
-        # If we're just getting the default order
-        else:
-            video_order[video_options[0]] = video
-            video_options.remove(video_options[0])
-    # Repeated code, but it is what it is. Don't want to make another function right now.
-    audio_options = [x for x in range(1, audio_len + 1)]
-    for audio, source in audio_list.items():
-        # If we're getting responses from the user
-        if user_prompt:
-            # Using 1 to start instead of 0 because I think that makes more sense for non-programmer nerds
-            response = getPosition(
-                f'What position would you like the file "{audio.name}" from "{audio.name}" to be in?\nThe options are {", ".join(map(str,audio_options))}, or 0 for the next position\n',
-                audio_options,
-            )
-            if response != 0:
-                audio_order[response] = audio
-                audio_options.remove(response)
-            else:
-                audio_order[audio_options[0]] = audio
-                audio_options.remove(audio_options[0])
-        # If we're just getting the default order
-        else:
-            audio_order[audio_options[0]] = audio
-            audio_options.remove(audio_options[0])
+    # Getting the user orders
+    video_order = getPositionRange(video_list, user_prompt)
+    audio_order = getPositionRange(audio_list, user_prompt)
     # Sort the results (we shouldn't need to if the user didn't customize them)
     if user_prompt:
         video_order = dict(sorted(video_order.items()))
@@ -1848,23 +1805,60 @@ def getIntBool(question: str) -> float:
             print("That is an invalid input. Must be a 0 or 1")
 
 
+# Function to handle the getPosition logic
+def getPositionRange(video_list: list, user_prompt: bool) -> dict:
+    # Variable to store the results
+    video_order = {}
+    # Getting the user responses
+    for i in range(len(video_list)):
+        # Get the video names if starting the loop
+        if i == 0:
+            video_names = list(video_list.keys())
+        # Get the options
+        options_list = {}
+        for ind, option in enumerate(video_names):
+            options_list[ind] = option
+        # If we're getting responses from the user
+        if user_prompt:
+            if len(video_names) != 1:
+                response = getPosition(
+                    f"Select the index of the video to use:\n",
+                    options_list,
+                )
+                video_order[response] = options_list[response]
+                video_names.remove(options_list[response])
+            else:
+                video_order[response] = options_list[response]
+                video_names.remove(options_list[response])
+        # If we're just getting the default order
+        else:
+            video_order[0] = options_list[0]
+            video_names.remove(options_list[0])
+    return video_order
+
+
 # Function to get a int from the user
-def getPosition(question: str, options: List[int]) -> int:
+def getPosition(question: str, options: dict) -> int:
+    # Options list
+    options_ind = list(options.keys())
     while True:
+        print("----------\nFile Options\n----------")
+        for ind, pathz in options.items():
+            print(f'{ind}: "{pathz.name}"')
         try:
             response = int(input(question))
-            if response in options or response == 0:
+            if response in options_ind:
                 return response
             else:
                 print(
-                    f'That is an invalid input. Must be in {", ".join(map(str,options))}, or 0 for the next position'
+                    f'That is an invalid input. Must be in the given list {", ".join(map(str,options_ind))}'
                 )
         except KeyboardInterrupt:
             logger.critical("User interrupted the program")
             sys.exit()
         except ValueError:
             print(
-                f'That is an invalid input. Must be in {", ".join(map(str,options))}, or 0 for the next position'
+                f'That is an invalid input. Must be in the given list {", ".join(map(str,options_ind))}'
             )
 
 
