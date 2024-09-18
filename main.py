@@ -272,13 +272,11 @@ def getPaths() -> userArguments:
             "Invalid speed factor: Must be a float equal to or greater than 0. 0 to disable (default)."
         )
         valid_arguments = False
-    if (
-        cli_args.audio_speed_factor >= 0.5 and cli_args.audio_speed_factor <= 100
-    ) or cli_args.audio_speed_factor == 0:
+    if (cli_args.audio_speed_factor >= 0) or cli_args.audio_speed_factor == 0:
         audio_speed_factor = cli_args.audio_speed_factor
     else:
         logger.critical(
-            "Invalid audio speed factor: Must be a float equal to or greater than 0.5 and less than 100, or 0 to disable (default)."
+            "Invalid audio speed factor: Must be a float greater than 0, 0 to disable (default)."
         )
         valid_arguments = False
     if cli_args.video_clip_in >= 0:
@@ -1825,14 +1823,14 @@ def getPositionRange(video_list: list, user_prompt: bool) -> dict:
                     f"Select the index of the video to use:\n",
                     options_list,
                 )
-                video_order[response] = options_list[response]
+                video_order[len(video_order) + 1] = options_list[response]
                 video_names.remove(options_list[response])
             else:
-                video_order[response] = options_list[response]
-                video_names.remove(options_list[response])
+                video_order[len(video_order) + 1] = options_list[0]
+                video_names.remove(options_list[0])
         # If we're just getting the default order
         else:
-            video_order[0] = options_list[0]
+            video_order[len(video_order) + 1] = options_list[0]
             video_names.remove(options_list[0])
     return video_order
 
@@ -2671,27 +2669,127 @@ parser = argparse.ArgumentParser(
     epilog="Garrett Johnson (GreenBeanio) - https://github.com/greenbeanio",
 )
 parser.add_argument(
-    "-v", "--video_directory", help="Path to the video directory", type=pathlib.Path
-)
-parser.add_argument(
-    "-a", "--audio_directory", help="Path to the audio directory", type=pathlib.Path
-)
-parser.add_argument(
-    "-o", "--output_directory", help="Path to the output directory", type=pathlib.Path
-)
-parser.add_argument(
-    "-t", "--temp_directory", help="Path to the temp directory", type=pathlib.Path
-)
-parser.add_argument(
-    "-dv",
-    "--delete_source_video",
-    help="Deletes the source video files if passed",
+    "-p",
+    "--prompt",
+    help="Prompts the user about clipping, fading, and speed per file",
     action="store_true",
 )
 parser.add_argument(
-    "-da",
-    "--delete_source_audio",
-    help="Deletes the source audio files if passed",
+    "-th",
+    "--threads",
+    help="How many threads for ffmpeg to use. If you're unsure what to use pass in 0. Default: 1",
+    type=int,
+    default=-1,
+)
+parser.add_argument(
+    "-il",
+    "--image_length",
+    help="How many seconds you want images to be by default. Default: 10",
+    type=float,
+    default=10,  # Not sure about this length, but oh well
+)
+parser.add_argument(
+    "-us",
+    "--use_settings",
+    help="If you're using any saved settings",
+    action="store_true",
+)
+parser.add_argument(
+    "-uco",
+    "--use_custom_order",
+    help="If you want to use a custom order for the files to be combined",
+    action="store_true",
+)
+parser.add_argument(
+    "-ve",
+    "--verbose",
+    help="Displays in detail the step the program is doing",
+    action="store_true",
+)
+parser.add_argument(
+    "-fps",
+    "--output_fps",
+    help="Defines the output video fps. Default: 30",
+    type=float,
+    default=30,
+    # Default is 30, because 60fps for an art timelapse is overkill
+)
+parser.add_argument(
+    "-sf",
+    "--speed_factor",
+    help="How much do you want to speed up video for the timelapse by. Default: 30",
+    type=float,
+    default=30,
+    # Default is 30 because that's 1 frame per seconds (assuming 30fps video)
+)
+parser.add_argument(
+    "-asf",
+    "--audio_speed_factor",
+    help="How much do you want to speed up the audio for the timelapse by. Default: 0 to disable",
+    type=float,
+    default=0,
+    # Default is 0 to disable it, could also be 1
+)
+parser.add_argument(
+    "-pa",
+    "--preserve_audio",
+    help=f"Wont remove the audio tracks from the videos.",
+    action="store_true",
+)
+parser.add_argument(
+    "-wi",
+    "--width",
+    help="The desired output width. Default: 1920",
+    type=int,
+    default=1920,
+)
+parser.add_argument(
+    "-he",
+    "--height",
+    help="The desired output height. Default: 1080",
+    type=int,
+    default=1080,
+)
+parser.add_argument(
+    "-v",
+    "--video_directory",
+    help="Path to the video directory. Default: ./video",
+    type=pathlib.Path,
+)
+parser.add_argument(
+    "-a",
+    "--audio_directory",
+    help="Path to the audio directory. Default: ./audio",
+    type=pathlib.Path,
+)
+parser.add_argument(
+    "-o",
+    "--output_directory",
+    help="Path to the output directory. Default: ./output",
+    type=pathlib.Path,
+)
+parser.add_argument(
+    "-t",
+    "--temp_directory",
+    help="Path to the temp directory. Default: ./temp",
+    type=pathlib.Path,
+)
+parser.add_argument(
+    "-s",
+    "--settings_directory",
+    help="Path to the settings directory. Default: /settings",
+    type=pathlib.Path,
+)
+parser.add_argument(
+    "-osp",
+    "--override_source_path",
+    help=f'Will replace the existing source paths ("video" and "audio") in the settings to the current directory paths. Useful if you\'ve moved the directories and don\'t want to update the settings file manually with prompts.',
+    action="store_true",
+)
+parser.add_argument(
+    "-iac",
+    "--ignore_audio_check",
+    help="Doesn't stop the process if the audio isn't longer than the video (and audio is used)",
     action="store_true",
 )
 parser.add_argument(
@@ -2705,6 +2803,132 @@ parser.add_argument(
     "--keep_temp_audio",
     help="Doesn't delete the temporary audio files if passed",
     action="store_true",
+)
+parser.add_argument(
+    "-vci",
+    "--video_clip_in",
+    help="How many seconds you want to clip from the start of the video by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-vco",
+    "--video_clip_out",
+    help="How many seconds you want to clip from the end of the video by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-vfi",
+    "--video_fade_in",
+    help="How many seconds you want fade in to the video by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-vfo",
+    "--video_fade_out",
+    help="How many seconds you want fade out of the video by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-ovfi",
+    "--output_video_fade_in",
+    help="How many seconds you want fade in to the output video. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-ovfo",
+    "--output_video_fade_out",
+    help="How many seconds you want fade out of the output video. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-movfi",
+    "--modified_output_video_fade_in",
+    help="How many seconds you want fade in to the modified output video. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-movfo",
+    "--modified_output_video_fade_out",
+    help="How many seconds you want fade out of the modified output video. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-aci",
+    "--audio_clip_in",
+    help="How many seconds you want to clip from the start of the audio by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-aco",
+    "--audio_clip_out",
+    help="How many seconds you want to clip from the end of the audio by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-afi",
+    "--audio_fade_in",
+    help="How many seconds you want fade in to the audio by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-afo",
+    "--audio_fade_out",
+    help="How many seconds you want fade out of the audio by default. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-oafi",
+    "--output_audio_fade_in",
+    help="How many seconds you want fade in to the output audio. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-oafo",
+    "--output_audio_fade_out",
+    help="How many seconds you want fade out of the output audio. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-moafi",
+    "--modified_output_audio_fade_in",
+    help="How many seconds you want fade in to the modified output audio. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-moafo",
+    "--modified_output_audio_fade_out",
+    help="How many seconds you want fade out of the modified output audio. Default: 0",
+    type=float,
+    default=0,
+)
+parser.add_argument(
+    "-cl",
+    "--compression_level",
+    help="How compressed do you want the output. Must be from -1 to 52. 0 is the best quality. Default: -1 to disable",
+    type=int,
+    default=-1,
+)
+parser.add_argument(
+    "-rs",
+    "--resize",
+    help="What scale do you want to resize the output. Default: 0 to disable",
+    type=float,
+    default=0,
 )
 parser.add_argument(
     "-otv",
@@ -2722,6 +2946,42 @@ parser.add_argument(
     "-oo",
     "--override_output",
     help="Overrides the output if passed",
+    action="store_true",
+)
+parser.add_argument(
+    "-os",
+    "--override_settings",
+    help="If you're going to change the settings with a prompt",
+    action="store_true",
+)
+parser.add_argument(
+    "-oco",
+    "--override_custom_order",
+    help="If you're going to change the custom order with a prompt. If the files aren't the exact same you will have to override the file regardless.",
+    action="store_true",
+)
+parser.add_argument(
+    "-dv",
+    "--delete_source_video",
+    help="Deletes the source video files if passed",
+    action="store_true",
+)
+parser.add_argument(
+    "-da",
+    "--delete_source_audio",
+    help="Deletes the source audio files if passed",
+    action="store_true",
+)
+parser.add_argument(
+    "-ds",
+    "--delete_settings",
+    help="Deletes the settings file if passed",
+    action="store_true",
+)
+parser.add_argument(
+    "-dco",
+    "--delete_custom_order",
+    help="Deletes the custom order file if passed",
     action="store_true",
 )
 parser.add_argument(
@@ -2743,124 +3003,16 @@ parser.add_argument(
     action="store_true",
 )
 parser.add_argument(
-    "-fps",
-    "--output_fps",
-    help="Defines the output video fps",
-    type=float,
-    default=30,
-    # Default is 30, because 60fps for an art timelapse is overkill
-)
-parser.add_argument(
-    "-sf",
-    "--speed_factor",
-    help="How much do you want to speed up the timelapse by",
-    type=float,
-    default=30,
-    # Default is 30 because that's 1 frame per seconds (assuming 30fps video)
-)
-parser.add_argument(
-    "-ve",
-    "--verbose",
-    help="Displays in detail the step the program is doing",
+    "-cs",
+    "--clear_settings",
+    help="Deletes the existing settings before creating new settings if passed",
     action="store_true",
 )
 parser.add_argument(
-    "-asf",
-    "--audio_speed_factor",
-    help="How much do you want to speed up the audio by",
-    type=float,
-    default=0,
-    # Default is 0 to disable it, could also be 1
-)
-parser.add_argument(
-    "-p",
-    "--prompt",
-    help="Prompts the user about clipping, fading, and speed per file",
+    "-cco",
+    "--clear_custom_order",
+    help="Deletes the existing custom order before creating new settings if passed",
     action="store_true",
-)
-parser.add_argument(
-    "-vci",
-    "--video_clip_in",
-    help="How many seconds you want to clip from the start of the video by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-vco",
-    "--video_clip_out",
-    help="How many seconds you want to clip from the end of the video by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-vfi",
-    "--video_fade_in",
-    help="How many seconds you want fade in to the video by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-vfo",
-    "--video_fade_out",
-    help="How many seconds you want fade out of the video by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-aci",
-    "--audio_clip_in",
-    help="How many seconds you want to clip from the start of the audio by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-aco",
-    "--audio_clip_out",
-    help="How many seconds you want to clip from the end of the audio by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-afi",
-    "--audio_fade_in",
-    help="How many seconds you want fade in to the audio by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-afo",
-    "--audio_fade_out",
-    help="How many seconds you want fade out of the audio by default",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-ovfi",
-    "--output_video_fade_in",
-    help="How many seconds you want fade in to the output video",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-ovfo",
-    "--output_video_fade_out",
-    help="How many seconds you want fade out of the output video",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-oafi",
-    "--output_audio_fade_in",
-    help="How many seconds you want fade in to the output audio",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-oafo",
-    "--output_audio_fade_out",
-    help="How many seconds you want fade out of the output audio",
-    type=float,
-    default=0,
 )
 parser.add_argument(
     "-kuv",
@@ -2875,57 +3027,6 @@ parser.add_argument(
     action="store_true",
 )
 parser.add_argument(
-    "-cl",
-    "--compression_level",
-    help="How compressed do you want the output",
-    type=int,
-    default=-1,
-)
-parser.add_argument(
-    "-rs",
-    "--resize",
-    help="What scale do you want to resize the output",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-s",
-    "--settings_directory",
-    help="Path to the settings directory",
-    type=pathlib.Path,
-)
-parser.add_argument(
-    "-us",
-    "--use_settings",
-    help="If you're using any saved settings",
-    action="store_true",
-)
-parser.add_argument(
-    "-os",
-    "--override_settings",
-    help="If you're going to change the settings with a prompt",
-    action="store_true",
-)
-parser.add_argument(
-    "-cs",
-    "--clear_settings",
-    help="Deletes the existing settings before creating new settings if passed",
-    action="store_true",
-)
-parser.add_argument(
-    "-ds",
-    "--delete_settings",
-    help="Deletes the settings file if passed",
-    action="store_true",
-)
-parser.add_argument(
-    "-th",
-    "--threads",
-    help="How many threads for ffmpeg to use",
-    type=int,
-    default=-1,
-)
-parser.add_argument(
     "-ra",
     "--randomize_audio",
     help="Randomizes the order that audio is combined (to reuse the same audio files for multiple timelapses without it getting old)",
@@ -2938,98 +3039,15 @@ parser.add_argument(
     action="store_true",
 )
 parser.add_argument(
-    "-osp",
-    "--override_source_path",
-    help=f'Will replace the existing source paths ("video" and "audio") in the settings to the current directory paths. Useful if you\'ve moved the directories and don\'t want to update the settings file manually with prompts.',
-    action="store_true",
-)
-parser.add_argument(
-    "-pa",
-    "--preserve_audio",
-    help=f"Wont remove the audio tracks from the videos.",
-    action="store_true",
-)
-parser.add_argument(
-    "-movfi",
-    "--modified_output_video_fade_in",
-    help="How many seconds you want fade in to the modified output video",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-movfo",
-    "--modified_output_video_fade_out",
-    help="How many seconds you want fade out of the modified output video",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-moafi",
-    "--modified_output_audio_fade_in",
-    help="How many seconds you want fade in to the modified output audio",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-moafo",
-    "--modified_output_audio_fade_out",
-    help="How many seconds you want fade out of the modified output audio",
-    type=float,
-    default=0,
-)
-parser.add_argument(
-    "-il",
-    "--image_length",
-    help="How many seconds you want images to be by default",
-    type=float,
-    default=10,  # Not sure about this length, but oh well
-)
-parser.add_argument(
     "-dss",
     "--dont_save_settings",
     help="Doesn't save the settings if passed",
     action="store_true",
 )
 parser.add_argument(
-    "-wi", "--width", help="The desired output width", type=int, default=1920
-)
-parser.add_argument(
-    "-he", "--height", help="The desired output height", type=int, default=1080
-)
-parser.add_argument(
-    "-uco",
-    "--use_custom_order",
-    help="If you want to use a custom order for the files to be combined",
-    action="store_true",
-)
-parser.add_argument(
-    "-oco",
-    "--override_custom_order",
-    help="If you're going to change the custom order with a prompt. If the files aren't the exact same you will have to override the file regardless.",
-    action="store_true",
-)
-parser.add_argument(
-    "-cco",
-    "--clear_custom_order",
-    help="Deletes the existing custom order before creating new settings if passed",
-    action="store_true",
-)
-parser.add_argument(
-    "-dco",
-    "--delete_custom_order",
-    help="Deletes the custom order file if passed",
-    action="store_true",
-)
-parser.add_argument(
     "-dsco",
     "--dont_save_custom_order",
     help="Doesn't save the custom order if passed",
-    action="store_true",
-)
-parser.add_argument(
-    "-iac",
-    "--ignore_audio_check",
-    help="Doesn't stop the process if the audio isn't longer than the video (and audio is used)",
     action="store_true",
 )
 
