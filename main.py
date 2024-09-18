@@ -88,6 +88,7 @@ class userArguments:
         clear_custom_order,
         delete_custom_order,
         dont_save_custom_order,
+        ignore_audio_check,
     ) -> None:
         self.video_directory = video_directory
         self.audio_directory = audio_directory
@@ -147,6 +148,7 @@ class userArguments:
         self.clear_custom_order = clear_custom_order
         self.delete_custom_order = delete_custom_order
         self.dont_save_custom_order = dont_save_custom_order
+        self.ignore_audio_check = ignore_audio_check
 
 
 # Function to make sure passed paths exist
@@ -253,6 +255,7 @@ def getPaths() -> userArguments:
     clear_custom_order = cli_args.clear_custom_order
     delete_custom_order = cli_args.delete_custom_order
     dont_save_custom_order = cli_args.dont_save_custom_order
+    ignore_audio_check = cli_args.ignore_audio_check
 
     # Validating other inputs
     if cli_args.output_fps > 0:
@@ -432,7 +435,7 @@ def getPaths() -> userArguments:
 
     # Close application if inputs aren't valid
     if not valid_arguments:
-        logger.critical("Fix problematic arguments!")
+        logger.critical("Fix the problematic arguments!")
         sys.exit()
 
     # Return the arguments
@@ -495,6 +498,7 @@ def getPaths() -> userArguments:
         clear_custom_order,
         delete_custom_order,
         dont_save_custom_order,
+        ignore_audio_check,
     )
 
 
@@ -1838,7 +1842,7 @@ def getIntBool(question: str) -> float:
             else:
                 print("That is an invalid input. Must be a 0 or 1")
         except KeyboardInterrupt:
-            print("bye bye")
+            logger.critical("User interrupted the program")
             sys.exit()
         except ValueError:
             print("That is an invalid input. Must be a 0 or 1")
@@ -1856,7 +1860,7 @@ def getPosition(question: str, options: List[int]) -> int:
                     f'That is an invalid input. Must be in {", ".join(map(str,options))}, or 0 for the next position'
                 )
         except KeyboardInterrupt:
-            print("bye bye")
+            logger.critical("User interrupted the program")
             sys.exit()
         except ValueError:
             print(
@@ -1875,7 +1879,7 @@ def getFloat(question: str) -> float:
             else:
                 print("Invalid input. Must be a positive float (decimal), 0, or -1")
         except KeyboardInterrupt:
-            print("bye bye")
+            logger.critical("User interrupted the program")
             sys.exit()
         except ValueError:
             print("Invalid input. Must be a positive float (decimal).")
@@ -2563,11 +2567,89 @@ def checkOrder(custom_order: dict, user_answers: dict) -> bool:
     video = set(video.keys()) == set(custom_order["video"].values())
     audio = set(audio.keys()) == set(custom_order["audio"].values())
     # Return true if both video and audio are matching
-    ######## I can maybe make this so that it'll only make you renter which one is wrong
+    # I could make this so that it'll only make you enter which one is wrong, but -\(0-0)/-
     if video and audio:
         return True
     else:
         return False
+
+
+# Function to check the totals
+def checkTotals(video_length: float, audio_length: float) -> Tuple[bool, float]:
+    # If the video is larger than the audio
+    if video_length > audio_length:
+        dif = video_length - audio_length
+        return tuple([True, dif])
+    # If the video is smaller than the audio
+    else:
+        dif = audio_length - video_length
+        return tuple([False, dif])
+
+
+# Function to check the audio and video length
+def getTotals(user_answers: dict) -> List[float]:
+    # Variables to store the total times
+    total_video = 0
+    total_audio = 0
+    # Get all of the files and their clips from the settings
+    for file, data in user_answers.items():
+        # Get the amount of clips
+        for index in range(len(data)):
+            # Get the lengths
+            if file.suffix.lower() in [".mp4", ".mkv", ".wav", ".mp3"]:
+                # If it's a video or audio file
+                if data[index]["clip_in"] != 0 or data[index]["clip_out"] != 0:
+                    clipped_duration = getClipTime(
+                        file,
+                        data[index]["clip_in"],
+                        data[index]["clip_out"],
+                        data[index]["clip_from_end"],
+                        False,
+                    )["output_length"]
+                else:
+                    clipped_duration = getLength(file)
+                # Speed up the length
+                if (
+                    data[index]["speed_factor"] != 0
+                    and data[index]["speed_factor"] != 1
+                ):
+                    sped_duration = clipped_duration / data[index]["speed_factor"]
+                else:
+                    sped_duration = clipped_duration
+                # Add the time to the list
+                if file.suffix.lower() in [".mp4", ".mkv"]:  # If a video
+                    total_video += sped_duration
+                else:  # If audio
+                    total_audio += sped_duration
+            elif file.suffix.lower() in [".png", ".jpg"]:
+                # If it's an image file
+                if data[index]["clip_in"] != 0 or data[index]["clip_out"] != 0:
+                    if data[index]["clip_from_end"]:
+                        # Get the time to cut at
+                        new_duration = (
+                            data[index]["speed_factor"] - data[index]["clip_out"]
+                        )
+                    # If we are passing in the actual time to clip at
+                    else:
+                        new_duration = data[index]["clip_out"]
+                    # Getting the new length after both buts
+                    clipped_duration = new_duration - data[index]["clip_in"]
+                else:
+                    clipped_duration = data[index]["speed_factor"]
+                # Speed up the length
+                if (
+                    data[index]["speed_factor"] != 0
+                    and data[index]["speed_factor"] != 1
+                ):
+                    sped_duration = clipped_duration / data[index]["speed_factor"]
+                else:
+                    sped_duration = clipped_duration
+                # Add the time to the list
+                total_video += sped_duration
+            else:
+                # If it's some file type it shouldn't be ... this shouldn't happen
+                logger.error(f'Huh, that file "{file}" shouldn\'t exist.')
+    return [total_video, total_audio]
 
 
 # Command line arguments
@@ -2894,7 +2976,7 @@ parser.add_argument(
     "-dss",
     "--dont_save_settings",
     help="Doesn't save the settings if passed",
-    action="store_false",
+    action="store_true",
 )
 parser.add_argument(
     "-wi", "--width", help="The desired output width", type=int, default=1920
@@ -2930,8 +3012,15 @@ parser.add_argument(
     "-dsco",
     "--dont_save_custom_order",
     help="Doesn't save the custom order if passed",
-    action="store_false",
+    action="store_true",
 )
+parser.add_argument(
+    "-iac",
+    "--ignore_audio_check",
+    help="Doesn't stop the process if the audio isn't longer than the video (and audio is used)",
+    action="store_true",
+)
+
 
 # Get the command line arguments
 cli_args = parser.parse_args()
@@ -3039,7 +3128,39 @@ user_answers = promptFiles(video_files, timelapse_video_files, "video", user_ans
 user_answers = promptFiles(audio_files, timelapse_audio_files, "audio", user_answers)
 user_answers = promptFiles(image_files, timelapse_video_files, "image", user_answers)
 
-#### Add a function to check the settings and alert the user if the audio isn't longer than the video!
+# Save the settings
+if not timelapse_args.dont_save_settings:
+    writeJson(json_file, user_answers, True)
+
+# Checking the video length against the audio length (if we're not ignoring it and we're using audio, and video for that matter)
+if (
+    not timelapse_args.ignore_audio_check
+    and len(video_files) != 0
+    and len(audio_files) != 0
+):
+    # Check that the video is larger than the audio
+    video_length, audio_length = getTotals(user_answers)
+    check_result, length_difference = checkTotals(video_length, audio_length)
+    # If the audio is longer
+    if check_result:
+        # If we're using the prompt mode ask the user if they want to continue or not
+        if timelapse_args.prompt:
+            u_input = getIntBool(
+                f"The video is longer than the audio by {length_difference} seconds.\nIf you continue the video will be abruptly cut when the audio ends.\nDo you want to continue : Yes [0] or No [1]?\n"
+            )
+            # If they don't want to continue
+            if u_input == 1:
+                logger.critical(
+                    f"Process stopped because the video is longer than the audio by {length_difference} seconds"
+                )
+                sys.exit()
+        # If we're not in prompt mode stop the program
+        else:
+            logger.critical(
+                f"Process stopped because the video is longer than the audio by {length_difference} seconds"
+            )
+            sys.exit()
+
 
 # If using custom order attempt to load them
 order_file = pathlib.Path.joinpath(timelapse_args.settings_directory, "order.json")
@@ -3086,10 +3207,8 @@ else:
     video_order, audio_order = promptOrder(user_answers)
     video_order, audio_order = userOrder(video_order, audio_order, False)
 
-# Save the settings and custom order
-if timelapse_args.dont_save_settings:
-    writeJson(json_file, user_answers, True)
-if timelapse_args.dont_save_custom_order:
+# Save the custom order
+if not timelapse_args.dont_save_custom_order:
     writeJson(order_file, {"video": video_order, "audio": audio_order}, False)
 
 # If there are videos
@@ -3178,8 +3297,6 @@ if timelapse_args.delete_settings and timelapse_args.delete_custom_order:
         "Deleting the settings directory ",
         "Deleted the settings directory ",
     )
-
-
 # Deleting the temp directory if both temp audio and video have been removed
 if not timelapse_args.keep_temp_video and not timelapse_args.keep_temp_audio:
     delLog(
