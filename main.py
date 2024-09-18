@@ -2538,6 +2538,21 @@ def checkSettings(
     return settings_dict
 
 
+def printMismatch(user_answers: list, custom_order: list) -> None:
+    # Check for files in the folders, but not in the custom order
+    for file_in_folder in user_answers:
+        if file_in_folder not in custom_order:
+            print(
+                f"{file_in_folder.name} is in the settings (source) but not in the customer order"
+            )
+    # Check for files in the custom order, but not in the folders
+    for file_in_custom in custom_order:
+        if file_in_custom not in user_answers:
+            print(
+                f"{file_in_custom.name} is in the custom order but not in the settings (source)"
+            )
+
+
 # Function to determine if the custom order contains all the existing files (and only the existing files)
 def checkOrder(custom_order: dict, user_answers: dict) -> bool:
     # Variables to store the paths
@@ -2564,13 +2579,16 @@ def checkOrder(custom_order: dict, user_answers: dict) -> bool:
                 )
                 audio[new_path] = file
     # Checking if the custom order contains only (and all) clips from the settings
-    video = set(video.keys()) == set(custom_order["video"].values())
-    audio = set(audio.keys()) == set(custom_order["audio"].values())
+    video_match = set(video.keys()) == set(custom_order["video"].values())
+    audio_match = set(audio.keys()) == set(custom_order["audio"].values())
     # Return true if both video and audio are matching
     # I could make this so that it'll only make you enter which one is wrong, but -\(0-0)/-
-    if video and audio:
+    if video_match and audio_match:
         return True
     else:
+        # If they don't match print the missing or extra files
+        printMismatch(video.keys(), custom_order["video"].values())
+        printMismatch(audio.keys(), custom_order["audio"].values())
         return False
 
 
