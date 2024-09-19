@@ -85,33 +85,71 @@ def defaultOrder(file_list: dict) -> dict:
 
 
 # NEW
-def sortListItem(item_1, item_2):
-    if item_1 < item_2:
-        return True
+def sortListItem(unsorted, sorted):
+    # Check if both are ints and floats or both are strings
+    if (isinstance(unsorted, (int, float)) and isinstance(sorted, (int, float))) or (
+        isinstance(unsorted, str) and isinstance(sorted, str)
+    ):
+        if unsorted < sorted:
+            return True
+        else:
+            return False
+    # If unsorted is a int or float, but sorted is a str
+    elif isinstance(unsorted, (int, float)) and isinstance(sorted, str):
+        return True  # Return true because numbers take priority over letters
+    # If sorted is a int or float, but unsorted is a str
+    elif isinstance(unsorted, str) and isinstance(sorted, (int, float)):
+        return False  # Return false because of reason above
     else:
-        return False
+        print("holy hell this shouldn't happen")
 
 
-def sortList():
-    pass
+def sortList(unsorted, sorted):
+    # Get the length of both
+    len_u = len(unsorted)
+    len_s = len(sorted)
+    # For the possible comparisons
+    for index in range(min(len_u, len_s)):
+        # Get values from both
+        u_item = unsorted[index]
+        s_item = sorted[index]
+        # If the unsorted item is found to be smaller than the sorted item return true
+        if sortListItem(u_item, s_item):
+            return True
+        # If not we keep the loop going
+    # If nothing was found to be smaller then return False
+    return False
 
 
 def sortDictionary(unsorted: dict) -> dict:
-    # Variable for storing the output
-    sorted_files = []
-    # Variable for storing the currently unsorted items using a deep copy
-    # (none of that shallow shit wanted because we have mutable objects and it only copies immutable objects.
-    # It is kind of like it's using pointer you'd use in other languages for mutable objects with a shallow copy)
-    c_unsorted_files = copy.deepcopy(unsorted)
-    # Printing?
+    # # Variable for storing the currently unsorted items using a deep copy
+    # # (none of that shallow shit wanted because we have mutable objects and it only copies immutable objects.
+    # # It is kind of like it's using pointer you'd use in other languages for mutable objects with a shallow copy)
+    # c_unsorted_files = copy.deepcopy(unsorted)
+
     # Checking every value
-    unsorted_len = len(unsorted) - 1
+    unsorted_len = len(unsorted)
+    # Variable for storing the output
+    sorted_files = [None] * unsorted_len
     print(unsorted_len)
-    for n, c_output in enumerate(unsorted.items()):
-        print(f"{n} ::: {c_output}")
+    for n, c_output in enumerate(unsorted):
+        # If it's the first entry
+        if n == 0:
+            sorted_files[n] = unsorted[c_output]
+            continue  # Skip the rest of the loop
         # Compare to each in the currently unsorted list
-        for compare_output, compare_data in c_unsorted_files.items():
-            
+        for ni, sorted in enumerate(sorted_files):
+            print(sorted)
+            input("next")
+            # if it's none we're at the end of the list
+            if sorted is None:
+                #### I think it'd be ni?
+                sorted_files[ni] = unsorted[c_output]
+                break  # Break out of inner loop to check the next item
+            # If the unsorted item is smaller than the stored item insert it before it
+            if sortList(unsorted[c_output]["stripped"], sorted["stripped"]):
+                sorted_files.insert(ni, unsorted[c_output]["stripped"])
+                break  # Break out of inner loop to check the next item
 
         # print(data["stripped"])
 
