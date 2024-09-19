@@ -1,6 +1,6 @@
 # Art Timelapse Maker
 
-# Purpose
+## Purpose
 
 This program takes videos files and creates a timelapse from them. It has the following capabilities:
 
@@ -21,13 +21,13 @@ If you used both video and audio they will be combined together.
 
 Then if you've added extra modifications (resizing and/or compressing the output) it will do that.
 
-# Requirements
+## Requirements
 
 - Python
 - FFmpeg
   - Including FFprobe which should be installed alongside it
 
-# File Structure
+## File Structure
 
 This program uses the following 4 directories:
 
@@ -43,7 +43,7 @@ You can also bypass the entire source processing stage and put files directly in
 
 You can also bypass the temp processing stage by putting files directly into the output folder. However, would need to name the audio file "audio.wav" and the video file "timelapse.mp4", or if using a file already containing both "timelapse_audio.mp4". You would do this if you only want to resize and/or compress a video.
 
-# Example Use
+## Example Use
 
 - python timelapse.py -p -ve -us -uco -th 0 -ovfi 5 -ovfo 5 -oafi 5 -oafo 5 -afi 2 -afo 2
   - Prompts the user to specify clips
@@ -54,13 +54,13 @@ You can also bypass the temp processing stage by putting files directly into the
   - Adds a 5 second fade in and out to the output combined video with audio
   - Adds a 2 seconds fade in and out to each individual audio track
 
-# Notable Defaults
+## Notable Defaults
 
 - Output FPS is 30
 - Videos are sped up 30x
 - Resolution is 1920 x 1080
 
-# Command Line Arguments
+## Command Line Arguments
 
 - -h
   - --help
