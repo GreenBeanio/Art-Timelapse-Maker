@@ -2500,12 +2500,135 @@ def createImage(image_files: list) -> None:
         resized_image = pathlib.Path.joinpath(
             timelapse_args.temp_directory, f"{image.stem}_r{image.suffix}"
         )
+        # Check if the resized file already exists
+        if checkPath(resized_image):
+            # Delete the existing file if that setting is enabled
+            if timelapse_args.override_temp_video:
+                delLog(
+                    output,
+                    "Deleting existing temp video created from image",
+                    "Deleted existing temp video created from image",
+                )
+                resizeImage(image, resized_image)
+                # Creating the modified versions
+                image_settings = user_answers[image]
+        # If it doesn't create it
+        else:
+            resizeImage(image, resized_image)
+            # Creating the modified versions
+            image_settings = user_answers[image]
+        # For every clip we're making for that file
+        # for index, clips in enumerate(video_settings):
+        for index in range(len(image_settings)):
+            # The final output
+            output = pathlib.Path.joinpath(
+                timelapse_args.temp_directory, f"{image.stem}_{index}.mp4"
+            )
+            # Check that the end output image video doesn't exist first
+            if checkPath(output):
+                # Delete the existing file if that setting is enabled
+                if timelapse_args.override_temp_video:
+                    delLog(
+                        output,
+                        "Deleting existing temp video created from image",
+                        "Deleted existing temp video created from image",
+                    )
+                    # Check if a version of it already exists
+                    image_video = pathlib.Path.joinpath(
+                        timelapse_args.temp_directory, f"{image.stem}.mp4"
+                    )
+                    # Creating the base video of the image
+                    if checkPath(image_video):
+                        # Delete the existing file if that setting is enabled
+                        if timelapse_args.override_temp_video:
+                            delLog(
+                                image_video,
+                                "Deleting existing temp video created from image",
+                                "Deleted existing temp video created from image",
+                            )
+                            # Create the new timelapse
+                            logImageVideo(image, resized_image, image_video, index)
+                    # If the file doesn't exist just create it
+                    else:
+                        # Create the new timelapse
+                        logImageVideo(image, resized_image, image_video, index)
+                    # Create the new timelapse
+                    logModifiedImageVideo(image, image_video, output, index)
+                    # Deleting the temporary video
+                    delLog(
+                        image_video,
+                        "Deleting the temporary image video",
+                        "Deleted the temporary image video",
+                    )
+            # If the file doesn't exist just create it
+            else:
+                # Check if a version of it already exists
+                image_video = pathlib.Path.joinpath(
+                    timelapse_args.temp_directory, f"{image.stem}.mp4"
+                )
+                # Creating the base video of the image
+                if checkPath(image_video):
+                    # Delete the existing file if that setting is enabled
+                    if timelapse_args.override_temp_video:
+                        delLog(
+                            image_video,
+                            "Deleting existing temp video created from image",
+                            "Deleted existing temp video created from image",
+                        )
+                        # Create the new timelapse
+                        logImageVideo(image, resized_image, image_video, index)
+                # If the file doesn't exist just create it
+                else:
+                    # Create the new timelapse
+                    logImageVideo(image, resized_image, image_video, index)
+                # Create the new timelapse
+                logModifiedImageVideo(image, image_video, output, index)
+                # Deleting the temporary video
+                delLog(
+                    image_video,
+                    "Deleting the temporary image video",
+                    "Deleted the temporary image video",
+                )
+        # Deleting the resized image and concat file
+        delLog(
+            resized_image,
+            "Deleting the temporary resized image",
+            "Deleted the temporary resized image",
+        )
+        # Delete the source image file if that setting is enabled
+        if timelapse_args.delete_video:
+            delLog(image, "Deleting existing image", "Deleted existing image")
+
+
+# Function to handle creating the videos from all the images
+def OLDcreateImage(image_files: list) -> None:
+    # Turn every video into a timelapse
+    for image in image_files:
+        # Modifying the image
+        resized_image = pathlib.Path.joinpath(
+            timelapse_args.temp_directory, f"{image.stem}_r{image.suffix}"
+        )
         resizeImage(image, resized_image)
         # Creating the modified versions
         image_settings = user_answers[image]
         # For every clip we're making for that file
         # for index, clips in enumerate(video_settings):
         for index in range(len(image_settings)):
+            # Check that the end output image video doesn't exist first
+            if checkPath(output):
+                # Delete the existing file if that setting is enabled
+                if timelapse_args.override_temp_video:
+                    delLog(
+                        output,
+                        "Deleting existing temp video created from image",
+                        "Deleted existing temp video created from image",
+                    )
+                    # Create the new timelapse
+                    logModifiedImageVideo(image, image_video, output, index)
+            # If the file doesn't exist just create it
+            else:
+                # Create the new timelapse
+                logModifiedImageVideo(image, image_video, output, index)
             # Check if a version of it already exists
             image_video = pathlib.Path.joinpath(
                 timelapse_args.temp_directory, f"{image.stem}.mp4"
@@ -2525,7 +2648,6 @@ def createImage(image_files: list) -> None:
             else:
                 # Create the new timelapse
                 logImageVideo(image, resized_image, image_video, index)
-
             # Creating the new output
             output = pathlib.Path.joinpath(
                 timelapse_args.temp_directory, f"{image.stem}_{index}.mp4"
