@@ -1737,6 +1737,9 @@ def defaultOrder(file_list: dict) -> dict:
     sorted_dict = {}
     for item in listed_file:
         sorted_dict[item] = file_list[item]
+
+    # More complicated sorting because of how strings with numbers
+
     return sorted_dict
 
 
@@ -1749,7 +1752,7 @@ def userOrder(
     audio_order = getPositionRange(audio_list, user_prompt)
     # Sort the results (we shouldn't need to if the user didn't customize them)
     if user_prompt:
-        video_order = dict(sorted(video_order.items()))
+        video_order = dict(sorted(video_order.items()))  #### Whhy do I do this?
         audio_order = dict(sorted(audio_order.items()))
     # Return the results
     return video_order, audio_order
