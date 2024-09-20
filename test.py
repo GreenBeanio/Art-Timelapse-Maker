@@ -47,15 +47,15 @@ def defaultOrder(file_list: dict) -> dict:
     # listed_file.sort(key=lambda x: x.name)
     # return listed_file
 
-    # print("-----Sorted Before----------")
     # # Dictionary Method
     # listed_file = list(file_list.keys())
     # listed_file.sort(key=lambda x: x.name)
     # sorted_dict = {}
     # for item in listed_file:
     #     sorted_dict[item] = file_list[item]
-    #     print(item)
+    # return sorted_dict
 
+    # Creating a more complicated sorting algorithm because of strings/paths containing numbers
     # Separate the digits from the other characters
     stripped_files = {}
     for fil, source in file_list.items():
@@ -73,37 +73,32 @@ def defaultOrder(file_list: dict) -> dict:
                     stripped.append(x)
         stripped_files[fil] = {"stripped": stripped, "source": source}
     # Sorting the lists of elements against each other
-
-    print("Stripped Files\n------------------")
-    print(stripped_files)
-    print("Sorting\n------------------")
     ordered_files = sortDictionary(stripped_files)
-    print("Sorted Files\n------------------")
-    print(ordered_files)
-
-    # return stripped_files
+    return ordered_files
 
 
 # NEW
-def sortListItem(unsorted, sorted):
+# Function to compare two items against each other
+def sortListItem(unsorted, sorted) -> int:
     # Check if both are ints and floats or both are strings
     if (isinstance(unsorted, (int, float)) and isinstance(sorted, (int, float))) or (
         isinstance(unsorted, str) and isinstance(sorted, str)
     ):
         if unsorted < sorted:
-            return True
+            return 0  # Return zero because it's larger
+        elif unsorted == sorted:
+            return 2  # Return 2 if they are equal and the next item should be compared
         else:
-            return False
+            return 1  # Return 1 if unsorted is larger
     # If unsorted is a int or float, but sorted is a str
     elif isinstance(unsorted, (int, float)) and isinstance(sorted, str):
-        return True  # Return true because numbers take priority over letters
+        return 0  # Return 0 because numbers take priority over letters
     # If sorted is a int or float, but unsorted is a str
     elif isinstance(unsorted, str) and isinstance(sorted, (int, float)):
-        return False  # Return false because of reason above
-    else:
-        print("holy hell this shouldn't happen")
+        return 1  # Return 1 because letters are always less than numbers
 
 
+# Function to compare two lists against each other
 def sortList(unsorted, sorted):
     # Get the length of both
     len_u = len(unsorted)
@@ -114,44 +109,52 @@ def sortList(unsorted, sorted):
         u_item = unsorted[index]
         s_item = sorted[index]
         # If the unsorted item is found to be smaller than the sorted item return true
-        if sortListItem(u_item, s_item):
+        result = sortListItem(u_item, s_item)
+        # Wanted to use the match for a switch statement, but I didn't have python 3.10+. Old version of ubuntu only had 3.8 :(
+        # match result:
+        #     case 0:
+        #         return True
+        #     case 1:
+        #         return False
+        if result == 0:
             return True
-        # If not we keep the loop going
+        elif result == 1:
+            return False
+        # If not we keep the loop going (result of 2)
     # If nothing was found to be smaller then return False
     return False
 
 
+# Function to sort the dictionaries by their output name
 def sortDictionary(unsorted: dict) -> dict:
-    # # Variable for storing the currently unsorted items using a deep copy
-    # # (none of that shallow shit wanted because we have mutable objects and it only copies immutable objects.
-    # # It is kind of like it's using pointer you'd use in other languages for mutable objects with a shallow copy)
-    # c_unsorted_files = copy.deepcopy(unsorted)
-
-    # Checking every value
-    unsorted_len = len(unsorted)
     # Variable for storing the output
-    sorted_files = [None] * unsorted_len
-    print(unsorted_len)
+    sorted_files = []
     for n, c_output in enumerate(unsorted):
         # If it's the first entry
         if n == 0:
-            sorted_files[n] = unsorted[c_output]
+            sorted_files.append(unsorted[c_output])
             continue  # Skip the rest of the loop
+        # Get the length of the current sorted file
+        sorted_files_len = len(sorted_files)
         # Compare to each in the currently unsorted list
         for ni, sorted in enumerate(sorted_files):
-            print(sorted)
-            input("next")
-            # if it's none we're at the end of the list
-            if sorted is None:
-                #### I think it'd be ni?
-                sorted_files[ni] = unsorted[c_output]
-                break  # Break out of inner loop to check the next item
             # If the unsorted item is smaller than the stored item insert it before it
             if sortList(unsorted[c_output]["stripped"], sorted["stripped"]):
-                sorted_files.insert(ni, unsorted[c_output]["stripped"])
-                break  # Break out of inner loop to check the next item
-
-        # print(data["stripped"])
+                sorted_files.insert(ni, unsorted[c_output])
+                break
+            # If we are at the last index in the list
+            if ni + 1 == sorted_files_len:
+                sorted_files.append(unsorted[c_output])
+                break  # Shouldn't need to break because it's the end, but just to be safe why not
+            # If we're not keep going and check against the next sorted file
+    # Transform the sorted array/list into a dictionary
+    output_dict = {}
+    for sort in sorted_files:
+        for output, data in unsorted.items():
+            # Find the matching entry from the sorted file
+            if sort["source"] == data["source"]:
+                output_dict[output] = data["source"]
+    return output_dict
 
 
 # # Function to ask the user about the order
