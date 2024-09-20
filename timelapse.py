@@ -2289,15 +2289,19 @@ def writeJson(file: pathlib.Path, userSettings: dict, file_type: bool) -> None:
 
 # Function to get the user to enter the information about the clip and fade for each file
 def userSettings(file: pathlib.Path, file_type: str) -> dict:
-    print(f"The following questions are about the file {file.name}:")
-    # Ask if they even want to modify this file
-    wanted = getIntBool(
-        "Do you want to make additional modification to this file: Yes [0] or No [1]?\n"
-    )
-    if wanted == 0:
-        wanted = True
-    elif wanted == 1:
-        wanted = False
+    if timelapse_args.use_settings:
+        print(f"The following questions are about the file {file.name}:")
+        # Ask if they even want to modify this file
+        wanted = getIntBool(
+            "Do you want to make additional modification to this file: Yes [0] or No [1]?\n"
+        )
+        if wanted == 0:
+            wanted = True
+        elif wanted == 1:
+            wanted = False
+    # If we aren't using settings use the defaults
+    else:
+        wanted = False  # Could just return here, but oh well
     # If they want to modify the file
     if wanted:
         # Create an item to store the response
@@ -2471,7 +2475,7 @@ def userSettings(file: pathlib.Path, file_type: str) -> dict:
                 break  # Could just return in here instead, but oh well
         # Return the response
         return response
-    # Return the default options (global)
+    # Return the default options (globals from the cli arguments)
     else:
         return userDefault(file_type)
 
