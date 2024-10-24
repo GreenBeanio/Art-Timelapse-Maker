@@ -28,7 +28,7 @@ total_start = time.perf_counter()
 
 
 # Class to store the user arguments
-class userArguments:
+class UserArguments:
     def __init__(
         self,
         video_directory,
@@ -171,7 +171,7 @@ def createDir(new_path: pathlib) -> None:
 
 
 # Function to get the paths to use (and verify the inputs)
-def getPaths() -> userArguments:
+def getPaths() -> UserArguments:
     # Bool to store if all arguments are valid or not
     valid_arguments = True
     # Get the directory where the script was called from
@@ -438,7 +438,7 @@ def getPaths() -> userArguments:
         sys.exit()
 
     # Return the arguments
-    return userArguments(
+    return UserArguments(
         video_source_directory,
         audio_source_directory,
         output_directory,
