@@ -2986,7 +2986,7 @@ parser.add_argument(
 parser.add_argument(
     "-s",
     "--settings_directory",
-    help="Path to the settings directory. Default: /settings",
+    help="Path to the settings directory. Default: ./settings",
     type=pathlib.Path,
 )
 parser.add_argument(
