@@ -27,6 +27,14 @@ Then if you've added extra modifications (resizing and/or compressing the output
 - FFmpeg
   - Including FFprobe which should be installed alongside it
 
+#### Initial Run (Linux)
+
+- cd /your/folder
+- python3 -m venv env
+- source env/bin/activate
+- pip install -r requirements.txt
+- See "Example Use"
+
 ## File Structure
 
 This program uses the following 4 directories:
